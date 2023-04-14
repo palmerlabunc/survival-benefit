@@ -1,0 +1,43 @@
+combo_sheet: "data/combination_trials_main_analysis_sheet.txt"
+
+main_combo:
+  metadata_sheet:
+  raw_dir: data/raw/clinical_trials
+  data_dir: data/clinical_trials/main_combo
+  fig_dir: figures/main_combo
+  table_dir: tables/main_combo
+
+biomarker:
+  metadata_sheet:
+  raw_dir: data/raw/clinical_trials
+  data_dir: data/clinical_trials/biomarker
+  fig_dir: figures/biomarker
+  table_dir: tables/biomarker
+
+placebo:
+  metadata_sheet:
+  raw_dir: data/raw/clinical_trials
+  data_dir: data/clinical_trials/placebo
+  fig_dir: figures/placebo
+  table_dir: tables/placebo
+
+single_agent:
+  metadata_sheet:
+  raw_dir: data/raw/clinical_trials
+  data_dir: data/cliniacl_trialssingle_agent
+  fig_dir: figures/single_agent
+  table_dir: tables/single_agent
+
+cell_line:
+  raw_dir: data/raw/cell_line
+  data_dir: data/cell_line
+  fig_dir: figures/cell_line
+  table_dir: tables/cell_line
+
+PDX:
+  raw_dir: data/raw/PDX
+  data_dir: data/PDX
+  fig_dir: figures/PDX
+  table_dir: tables/PDX
+
+
