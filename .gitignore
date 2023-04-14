@@ -1,0 +1,10 @@
+figures/*
+tables/*
+data/*
+src/*.ipynb
+doc/*
+publication-figures/
+.DS_Store
+_pycache_/
+.pytest_cache/
+*.pyc
