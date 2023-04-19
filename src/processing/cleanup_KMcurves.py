@@ -4,23 +4,14 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import argparse
-import yaml
 
-with open('config.yaml', 'r') as f:
-    CONFIG = yaml.safe_load(f)
-
-COMBO_INPUT_SHEET = CONFIG['metadata_sheet']['combo']
-PLACEBO_INPUT_SHEET = CONFIG['metadata_sheet']['placebo']
-
-RAW_COMBO_DIR = CONFIG['dir']['raw_combo_data']
-RAW_PLACEBO_DIR = CONFIG['dir']['raw_placebo_data']
-COMBO_DATA_DIR = CONFIG['dir']['combo_data']
-PLACEBO_DATA_DIR = CONFIG['dir']['placebo_data']
-FIG_DIR = CONFIG['dir']['figures']
 
 def raw_import(filepath: str) -> pd.DataFrame:
+    filepath = os.path.expanduser(filepath)
     with open(filepath, 'r') as f:
-        cols = len(f.readline().split(','))
+        tokens = f.readline().strip().split(',')
+        cols = len(tokens)
+    
     if cols == 2:
         df = pd.read_csv(filepath, header=0)
         # change column names
@@ -29,8 +20,8 @@ def raw_import(filepath: str) -> pd.DataFrame:
         # if survival is in 0-1 scale, convert to 0-100
         if df['Survival'].max() <= 1.1:
             df.loc[:, 'Survival'] = df['Survival'] * 100
+
     elif cols == 1:
-        # TODO remove repeating points at the end of the tail
         df = pd.read_csv(filepath, sep=',', header=None, names=['Time'])
         df = df.sort_values('Time', ascending=False).reset_index(drop=True)
         df.loc[:, 'Survival'] = np.linspace(0, 100, num=df.shape[0])
@@ -47,24 +38,7 @@ def preprocess_survival_data(filepath: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: returned data frame
     """
-    filepath = os.path.expanduser(filepath)
-    with open(filepath, 'r') as f:
-        tokens = f.readline().strip().split(',')
-        cols = len(tokens)
-    if cols == 2:
-        df = pd.read_csv(filepath, header=0)
-        # change column names
-        if not ('Time' in df.columns and 'Survival' in df.columns):
-            df.columns = ['Time', 'Survival']
-        # if survival is in 0-1 scale, convert to 0-100
-        if df['Survival'].max() <= 1.1:
-            df.loc[:, 'Survival'] = df['Survival'] * 100
-
-    elif cols == 1:
-        df = pd.read_csv(filepath, sep=',', header=None, names=['Time'])
-        df = df.sort_values('Time', ascending=False).reset_index(drop=True)
-        df.loc[:, 'Survival'] = np.linspace(0, 100, num=df.shape[0])
-
+    df = raw_import(filepath)
     df = cleanup_survival_data(df)
     return df
 
