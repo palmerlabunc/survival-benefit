@@ -9,7 +9,7 @@ import matplotlib.patches as patches
 import seaborn as sns
 from scipy.stats import kendalltau, spearmanr, rankdata
 from prob_functions import get_prob
-from preprocessing import preprocess_survival_data, cleanup_survival_data
+from processing.cleanup_KMcurves import preprocess_survival_data, cleanup_survival_data
 from utils import interpolate, weibull_from_digitized
 
 
@@ -18,7 +18,7 @@ class SurvivalBenefit:
 
     """
 
-    def __init__(self, N, mono_name, comb_name,
+    def __init__(self, N: int, mono_name: str, comb_name: str,
                  mono_data=None, comb_data=None, atrisk=None,
                  indir=None, outdir='.', out_name=None,
                  figsize=(6, 4), corr='spearmanr', fig_format='png', save_mode=True):
