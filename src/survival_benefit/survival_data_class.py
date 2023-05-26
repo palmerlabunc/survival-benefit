@@ -2,8 +2,8 @@ from dataclasses import dataclass, field, InitVar
 from typing import Optional
 import pandas as pd
 import numpy as np
-from src.processing.cleanup_KMcurves import cleanup_survival_data
-from src.utils import interpolate, weibull_from_digitized
+from survival_benefit.cleanup_KMcurves import cleanup_survival_data
+from survival_benefit.utils import interpolate, weibull_from_digitized
 
 
 @dataclass
@@ -22,10 +22,37 @@ class SurvivalData:
         self.original_data = cleanup_survival_data(uncleaned_data)
         if self.tmax is None:
             if self.atrisk is None:
-                self.tmax = np.round(self.original_data['Time'].max(), 5)
+                tmax = np.round(self.original_data['Time'].max(), 5)
             else:
-                self.tmax = self.__pcp_cutoff_time()
+                tmax = self.__pcp_cutoff_time()
+            self.tmax = tmax
         self.processed_data = self.__prepare_data()
+
+
+    def set_N(self, n: int):
+        self.N = n
+        self.processed_data = self.__prepare_data()
+
+
+    def set_tmax(self, time: float):
+        """Set tmax to time.
+        """
+        self.tmax = time
+        self.processed_data = self.__prepare_data()
+    
+    def round_time(self, decimals=5):
+        self.processed_data.loc[:, 'Time'] = self.processed_data['Time'].round(decimals)
+
+    def set_atrisk_table(self, atrisk: pd.Series):
+        assert isinstance(atrisk, pd.Series)
+        self.atrisk = atrisk
+        self.set_tmax(self.__pcp_cutoff_time())
+
+
+    def add_weibull_tail(self):
+        if not self.weibull_tail:
+            self.weibull_tail = True
+            self.processed_data = self.__concat_weibull_tail(self.processed_data)
 
 
     def __pcp_cutoff_time(self, threshold=4):
@@ -35,21 +62,6 @@ class SurvivalData:
         pcp = f(self.atrisk.index) / self.atrisk
         cutoff = pcp[pcp <= threshold].idxmax()
         return cutoff
-
-
-    def set_tmax(self, time):
-        """Set tmax to time.
-        """
-        self.tmax = time
-        self.processed_data = self.__prepare_data()
-    
-
-    def add_weibull_tail(self):
-        if self.weibull_tail:
-            print("Weibull tail already added.")
-        else:
-            self.weibull_tail = True
-            self.processed_data = self.__concat_weibull_tail(self.processed_data)
 
 
     def __prepare_data(self):
@@ -105,7 +117,7 @@ class SurvivalData:
         return new_df[['Time', 'Survival']].sort_values('Survival').reset_index(drop=True)
 
 
-    def __concat_weibull_tail(self, populated):
+    def __concat_weibull_tail(self, populated: pd.DataFrame):
 
         assert self.weibull_tail, "weibull_tail is False"
 
@@ -114,14 +126,14 @@ class SurvivalData:
         min_survival_idx = original.index.min()
         # # if weibull fit is lower at the end of follow-up
         if original.iat[0, 0] > weibull.iat[min_survival_idx - 1, 0]:
-            weibull_surv_at_tmax = weibull[weibull['Time'] >= self.time_max].index.max()
+            weibull_surv_at_tmax = weibull[weibull['Time'] >= self.tmax].index.max()
             if np.isnan(weibull_surv_at_tmax):
                 print("No Weibull Tail")
                 return populated
             fill_range = np.array(
                 range(weibull_surv_at_tmax,  min_survival_idx))
             tmp = pd.DataFrame({'Survival': 100 * fill_range / self.N,
-                                'Time': self.time_max},
+                                'Time': self.tmax},
                                index=fill_range)
             merged = pd.concat([weibull.loc[:weibull_surv_at_tmax - 1, :], tmp, original], axis=0)
         else: # if weibull fit is higher at the end of follow-up
