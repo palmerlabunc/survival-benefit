@@ -1,7 +1,7 @@
-combo_sheet: "data/combination_trials_main_analysis_sheet.txt"
+data_master_sheet: "data/data_master_sheet.xlsx"
 
 main_combo:
-  metadata_sheet:
+  metadata_sheet: "data/clinical_trials/main_combo_input_data_sheet.csv"
   raw_dir: data/raw/clinical_trials
   data_dir: data/clinical_trials/main_combo
   fig_dir: figures/main_combo

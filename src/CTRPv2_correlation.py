@@ -1,7 +1,8 @@
+#!/usr/bin/env python
+
 import pandas as pd
 import numpy as np
 from itertools import combinations_with_replacement
-import yaml
 from collections.abc import Iterable
 from processing.precompute_CTRPv2_correlation import import_ctrp_data, precompute_moa_drug_list
 from utils import load_config
