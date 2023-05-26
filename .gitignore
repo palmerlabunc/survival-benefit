@@ -11,3 +11,4 @@ publication-figures/
 _pycache_/
 .pytest_cache/
 *.pyc
+src/example/test_output/
