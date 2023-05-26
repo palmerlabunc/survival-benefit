@@ -1,7 +1,10 @@
 figures/*
 tables/*
 data/*
+src/_pycache_/
 src/*.ipynb
+src/.pytest_cache
+src/local_survival_benefit.egg-info/
 doc/*
 publication-figures/
 .DS_Store
