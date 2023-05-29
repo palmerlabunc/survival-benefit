@@ -15,11 +15,12 @@ class SurvivalBenefit:
     """This version has the row approach and uses
 
     """
-    def __init__(self, N: int, 
-                 mono_data: pd.DataFrame | SurvivalData = None, 
+
+    def __init__(self, N: int,
+                 mono_data: pd.DataFrame | SurvivalData = None,
                  comb_data: pd.DataFrame | SurvivalData = None,
                  mono_name: str = None, comb_name: str = None,
-                 atrisk: pd.DataFrame = None, corr='spearmanr', 
+                 atrisk: pd.DataFrame = None, corr='spearmanr',
                  outdir='.', out_name: str = None,
                  figsize=(6, 4), fig_format='png', save_mode=True):
         """
@@ -433,6 +434,59 @@ class SurvivalBenefit:
         raise ValueError(
             "Invalid survival data type. Provide a SurvivalData object or a pandas DataFrame with a name.")
 
+    def __set_atrisk_table(self, atrisk: pd.DataFrame | None, comb_name: str | None) -> pd.DataFrame | None:
+        """Set the atrisk table. If atrisk is None, try to load the atrisk table from the comb_name.
+
+        Args:
+            atrisk (pd.DataFrame): atrisk table
+
+        Returns:
+            pd.DataFrame: the atrisk table. None if invalid.
+        """
+        if atrisk is None and comb_name is not None:
+            try:
+                atrisk_filepath = SurvivalBenefit.__get_atrisk_filename_from_comb_name(
+                    comb_name)
+                atrisk = pd.read_csv(atrisk_filepath, index_col=None, header=0)
+            except FileNotFoundError:
+                warnings.warn(
+                    f"at-risk table not found for {comb_name}. Setting atrisk table to None.")
+                return None
+
+        # check if the atrisk table is valid
+        if not isinstance(atrisk, pd.DataFrame):
+            return None
+        elif atrisk.columns != ['control', 'treatment', 'time']:
+            warnings.warn(
+                "Invalid atrisk table. Must have columns ['control', 'treatment', 'time']. Setting atrisk table to None.")
+            return None
+
+        atrisk = atrisk.set_index('time')
+
+        # this will automatically apply percentage per patient (PCP) threshold to the survival data
+        self.mono_survival_data.atrisk = atrisk['control']
+        self.comb_survival_data.atrisk = atrisk['treatment']
+
+        return atrisk
+
+    @staticmethod
+    def __get_atrisk_filename_from_comb_name(comb_name: str) -> str:
+        """Get the filename of the atrisk table from the combo survival data name.
+
+        Args:
+            comb_name (str): combo survival data name
+
+        Returns:
+            str: atrisk table filename
+        """
+        comb_file_tokens = comb_name.rsplit(
+            '/', 1)  # split by last '/' to seperate directory path and file prefix
+        comb_file_prefix = comb_file_prefix[-1]
+        tokens = comb_file_prefix.split('_', 2)
+        drug_names = tokens[1].split('-')
+        experimental_drug = drug_names[0]
+        atrisk_filepath = f'{comb_file_tokens[0]}/{tokens[0]}_{experimental_drug}_{tokens[2]}_at-risk.csv'
+        return atrisk_filepath
 
     def __add_weibull_tails(self):
         """Add weibull tails to the mono and combo survival data if they don't exist
