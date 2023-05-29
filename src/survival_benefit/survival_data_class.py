@@ -28,11 +28,12 @@ class SurvivalData:
             self.tmax = tmax
         self.processed_data = self.__prepare_data()
 
-
+    def set_name(self, name: str):
+        self.name = name.strip()
+    
     def set_N(self, n: int):
         self.N = n
         self.processed_data = self.__prepare_data()
-
 
     def set_tmax(self, time: float):
         """Set tmax to time.
@@ -44,16 +45,21 @@ class SurvivalData:
         self.processed_data.loc[:, 'Time'] = self.processed_data['Time'].round(decimals)
 
     def set_atrisk_table(self, atrisk: pd.Series):
+        """
+        Assign the given at risk table to self.atrisk 
+        and set tmax to the time point where the percentage per patient (PCP) is below the threshold.
+
+        Args:
+            atrisk (pd.Series): at risk table for the arm. Index is time, values are number of patients at risk.
+        """        
         assert isinstance(atrisk, pd.Series)
         self.atrisk = atrisk
         self.set_tmax(self.__pcp_cutoff_time())
-
 
     def add_weibull_tail(self):
         if not self.weibull_tail:
             self.weibull_tail = True
             self.processed_data = self.__concat_weibull_tail(self.processed_data)
-
 
     def __pcp_cutoff_time(self, threshold=4):
         # PCP: percentage per patient
@@ -62,7 +68,6 @@ class SurvivalData:
         pcp = f(self.atrisk.index) / self.atrisk
         cutoff = pcp[pcp <= threshold].idxmax()
         return cutoff
-
 
     def __prepare_data(self):
         populated = self.__populate_N_patients()
@@ -74,7 +79,6 @@ class SurvivalData:
             return self.__concat_weibull_tail(populated)
         else:
             return populated
-
 
     def __populate_N_patients(self):
         """Scale to make N patients from survival 0 to 100.
@@ -115,7 +119,6 @@ class SurvivalData:
                 {'Time': 5, 'Survival': int(np.ceil(-np.log10(step)))})
         assert new_df.shape[0] == self.N
         return new_df[['Time', 'Survival']].sort_values('Survival').reset_index(drop=True)
-
 
     def __concat_weibull_tail(self, populated: pd.DataFrame):
 
