@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+import warnings
 import numpy as np
 import pandas as pd
 import sys
@@ -78,121 +79,68 @@ class SurvivalBenefit:
         self.percent_certain = None
         self.percent_uncertain = None  # left-bound
         self.percent_1mo = None  # percentage of patients with > 1 month benefit
-        self.corr = corr  # correlation type: kendalltau or spearmanr
+        self.corr_method = corr  # correlation type: kendalltau or spearmanr
         self.corr_rho = None
         self.corr_p = None
 
         if self.save_mode:
             if out_name is None:
-                self.outdir = self.__prepare_outdir(self.comb_survival_data.name)
+                self.outdir = self.__prepare_outdir(
+                    self.comb_survival_data.name)
             else:
                 self.outdir = self.__prepare_outdir(out_name)
-        
-
 
     def __str__(self) -> str:
         return self.__generate_summary_stats_str()
-    
+
     def set_tmax(self, tmax):
         self.tmax = tmax
         self.mono_survival_data.set_tmax(tmax)
         self.comb_survival_data.set_tmax(tmax)
 
-
-    def compute_benefit(self, prob_kind='power', prob_coef=1.0, prob_offset=0.0):
-        """Compute the survival benefit of the added drug.
+    def compute_benefit(self, prob_coef=1.0, prob_offset=0.0, prob_kind='power'):
+        """Compute benefit profile using the probability function.
 
         Args:
+            prob_coef (float, optional): coefficent in probability function. Defaults to 1.0.
+            prob_offset (float, optional): offset in probablity function. Defaults to 0.0.
             prob_kind (str, optional): how to calculate probability ('linear', 'power', 'exponential'). Defaults to 'power'.
-            prob_coef (float, optional): coefficent in probability function. Defaults to 0.
-            prob_offset (float, optional): offset in probablity function. Defaults to 0.
         """
-        assert self.norm_diff >= 0, "Error: Cannot run algorithm if monotherapy is better than combination."
-
-        rng = np.random.default_rng()
-
-        self.info_str = self.__generate_info_str(
-            self.N, prob_kind, prob_coef, prob_offset)
-
-        self.benefit_df = self.__initialize_benefit_df()
-        mono_df = self.mono_survival_data.processed_data
-
-        for i in range(self.N - 1, -1, -1):
-            t = self.max_curve.at[i, 'Time']
-            surv = self.max_curve.at[i, 'Survival']
-            # from patients that have not been assigned 'benefit' yet
-            patient_pool = self.benefit_df[~self.benefit_df['benefit']].index.values
-            pool_size = patient_pool.size
-
-            if pool_size == 0:  # if all patients have been assigned, continue
-                continue
-            elif pool_size == 1:
-                chosen_patient = patient_pool[0]
-            else:
-                prob = get_prob(pool_size, prob_coef,
-                                prob_offset, kind=prob_kind)
-                chosen_patient = rng.choice(
-                    patient_pool, 1, p=prob, replace=False)[0]
-
-            t_chosen = mono_df.at[chosen_patient, 'Time']
-
-            if t_chosen > t:
-                try:
-                    chosen_patient = self.benefit_df[(~self.benefit_df['benefit']) & (
-                        self.benefit_df['Time'] <= t)].index.values[0]
-                except IndexError:
-                    continue
-
-            self.benefit_df.at[chosen_patient, 'benefit'] = True
-            self.benefit_df.at[chosen_patient, 'new_t'] = t
-            self.benefit_df.at[chosen_patient, 'new_surv'] = surv
-
-        # add delta_t info
-        self.benefit_df.loc[:, 'delta_t'] = self.benefit_df['new_t'] - \
-            self.benefit_df['Time']
-        self.benefit_df.loc[:,
-                            'delta_t'] = self.benefit_df['delta_t'].fillna(0)
-        # left-bound delta t
-        self.benefit_df.loc[self.benefit_df['new_t']
-                            >= self.tmax, 'left_bound'] = True
-        self.benefit_df.loc[:, 'lb_delta_t'] = self.benefit_df['delta_t']
-        self.benefit_df.loc[self.benefit_df['left_bound'], 'lb_delta_t'] = self.tmax - \
-            self.benefit_df[self.benefit_df['left_bound']]['Time']
+        self.benefit_df = self.__compute_benefit_helper(
+            prob_coef, prob_offset, prob_kind)
         # record summary stats
         self.__record_summary_stats()
 
+    def compute_benefit_at_corr(self, corr: float):
+        """Compute the survival benefit of the added drug at a given correlation. The given correlation value
+        will be rounded to two decimal points.
 
-    def __record_summary_stats(self):
-        """Short summary.
-
+        Args:
+            corr (float): correlation value. Must be between -1 and 1.
         """
-        valid_subset = self.benefit_df[self.benefit_df['valid']]
-        # benefitting percentage
-        stepsize = 100 / self.N
-        self.percent_certain = stepsize * \
-            sum((self.benefit_df['delta_t'] > 1) & (
-                self.benefit_df['left_bound']) & (self.benefit_df['valid']))
-        self.percent_uncertain = stepsize * \
-            sum((self.benefit_df['lb_delta_t'] > 1) & (
-                self.benefit_df['left_bound']) & (self.benefit_df['valid']))
-        self.percent_1mo = stepsize * sum(valid_subset['delta_t'] > 1)
+        assert corr >= -1 and corr <= 1, "Correlation must be between -1 and 1."
+        corr = round(corr, 2)
+        prob_coef_range = (-50, 50)
+        benefit_df = self.__corr_search(corr, prob_coef_range, 0, 0.005)
+        if benefit_df is None:
+            warnings.warn(f"Correlation {corr} not found.")
 
-        # median benefit low bound
-        self.med_benefit_low = valid_subset[valid_subset['lb_delta_t'] > 1]['lb_delta_t'].median(
-        )
+        self.benefit_df = benefit_df
+        self.__record_summary_stats()
 
-        # median benefit high bound
-        self.med_benefit_high = valid_subset[valid_subset['delta_t'] > 1]['delta_t'].median(
-        )
+    @staticmethod
+    def acceptible_corr(corr: float, target_corr: float, diff_threshold: float = 0.005) -> bool:
+        """Check if the correlation is acceptible.
 
-        # correlation
-        if self.corr == 'kendalltau':
-            r2, p2 = kendalltau(valid_subset['Time'], valid_subset['delta_t'])
-        elif self.corr == 'spearmanr':
-            r2, p2 = spearmanr(valid_subset['Time'], valid_subset['delta_t'])
-        self.corr_rho = r2
-        self.corr_p = p2
+        Args:
+            corr (float): correlation
+            target_corr (float): target correlation
+            diff_threshold (float): difference threshold. Defaults to 0.005.
 
+        Returns:
+            bool: True if the correlation is acceptible
+        """
+        return abs(corr - target_corr) < diff_threshold
 
     def plot_compute_benefit_sanity_check(self, save=True, postfix=""):
         """Sanity check plot of monotherapy, updated, and combination arms.
@@ -247,7 +195,6 @@ class SurvivalBenefit:
 
         return ax
 
-
     def plot_t_delta_t_corr(self, save=True, postfix=""):
         """Plot survival time for A against added benefit from B.
 
@@ -267,7 +214,7 @@ class SurvivalBenefit:
                     scatter=False, ax=ax, color='orange')
 
         ax.set_title('{corr}={r:.2f} p={p:.2e}'.format(
-            corr=self.corr, r=self.corr_rho, p=self.corr_p))
+            corr=self.corr_method, r=self.corr_rho, p=self.corr_p))
         sns.despine()
         ax.set_xlim(0, self.N + 10)
         ax.set_ylim(0, self.N + 10)
@@ -376,7 +323,6 @@ class SurvivalBenefit:
             plt.close()
         return ax
 
-
     def save_benefit_df(self, postfix=""):
         """Save benefit_df dataframe to csv file.
 
@@ -384,7 +330,6 @@ class SurvivalBenefit:
         assert self.save_mode, "Cannot Save Summary Stats: Not in Save Mode"
         self.benefit_df.to_csv(
             f'{self.outdir}/{self.info_str}{postfix}.table.csv')
-
 
     def save_summary_stats(self, postfix=""):
         """Save summary stats information.
@@ -395,6 +340,179 @@ class SurvivalBenefit:
 
         with open(f'{self.outdir}/{self.info_str}{postfix}.summary_stats.tsv', 'w') as f:
             f.write(summary)
+
+    def __compute_benefit_helper(self, prob_coef, prob_offset=0.0, prob_kind='power'):
+        """Internal helper function for computing the benefit profile.
+
+        Args:
+            prob_coef (float): coefficent in probability function
+            prob_offset (float, optional): offset in probablity function. Defaults to 0.
+            prob_kind (str, optional): how to calculate probability ('linear', 'power', 'exponential'). Defaults to 'power'.
+
+        Returns:
+            pd.DataFrame: survival benefit profile dataframe
+        """
+        assert self.norm_diff >= 0, "Error: Cannot run algorithm if monotherapy is better than combination."
+
+        rng = np.random.default_rng()
+
+        self.info_str = self.__generate_info_str(
+            self.N, prob_kind, prob_coef, prob_offset)
+
+        benefit_df = self.__initialize_benefit_df()
+        mono_df = self.mono_survival_data.processed_data
+
+        for i in range(self.N - 1, -1, -1):
+            t = self.max_curve.at[i, 'Time']
+            surv = self.max_curve.at[i, 'Survival']
+            # from patients that have not been assigned 'benefit' yet
+            patient_pool = benefit_df[~benefit_df['benefit']].index.values
+            pool_size = patient_pool.size
+
+            if pool_size == 0:  # if all patients have been assigned, continue
+                continue
+            elif pool_size == 1:
+                chosen_patient = patient_pool[0]
+            else:
+                prob = get_prob(pool_size, prob_coef,
+                                prob_offset, kind=prob_kind)
+                chosen_patient = rng.choice(
+                    patient_pool, 1, p=prob, replace=False)[0]
+
+            t_chosen = mono_df.at[chosen_patient, 'Time']
+
+            if t_chosen > t:
+                try:
+                    chosen_patient = benefit_df[(~benefit_df['benefit']) & (
+                        benefit_df['Time'] <= t)].index.values[0]
+                except IndexError:
+                    continue
+
+            benefit_df.at[chosen_patient, 'benefit'] = True
+            benefit_df.at[chosen_patient, 'new_t'] = t
+            benefit_df.at[chosen_patient, 'new_surv'] = surv
+
+        # add delta_t info
+        benefit_df.loc[:, 'delta_t'] = benefit_df['new_t'] - \
+            benefit_df['Time']
+        benefit_df.loc[:,
+                       'delta_t'] = benefit_df['delta_t'].fillna(0)
+        # left-bound delta t
+        benefit_df.loc[benefit_df['new_t']
+                       >= self.tmax, 'left_bound'] = True
+        benefit_df.loc[:, 'lb_delta_t'] = benefit_df['delta_t']
+        benefit_df.loc[benefit_df['left_bound'], 'lb_delta_t'] = self.tmax - \
+            benefit_df[benefit_df['left_bound']]['Time']
+
+        return benefit_df
+
+    def __compute_corr_from_benefit_df(self, benefit_df: pd.DataFrame) -> float:
+        """Compute the correlation from the benefit_df.
+
+        Args:
+            benefit_df (pd.DataFrame): benefit dataframe
+
+        Returns:
+            float: correlation
+        """
+        valid_subset = benefit_df[benefit_df['valid']]
+        if self.corr_method == 'kendalltau':
+            r2, p2 = kendalltau(valid_subset['Time'], valid_subset['delta_t'])
+        elif self.corr_method == 'spearmanr':
+            r2, p2 = spearmanr(valid_subset['Time'], valid_subset['delta_t'])
+        return r2
+
+    def __corr_search_helper(self, prob_coef: float, prob_offset=0.0, prob_kind='power') -> float:
+        """Helper function for corr_search.
+
+        Args:
+            prob_coef (float): probability coefficient
+            prob_offset (float, optional): probability offset. Defaults to 0.0.
+            prob_kind (str, optional): probability kind. Defaults to 'power'.
+
+        Returns:
+            float: correlation
+        """
+        benefit_df = self.__compute_benefit_helper(
+            prob_coef, prob_offset, prob_kind)
+        corr = self.__compute_corr_from_benefit_df(benefit_df)
+        return benefit_df, corr
+
+    def __corr_search(self, target_corr: float, prob_coef_range: tuple, prob_offset: float, diff_threshold: float):
+        """Search for the probability coefficient and offset that gives the desired correlation.
+
+        Args:
+            target_corr (float): desired correlation
+            prob_coef_range (tuple): probability coefficient range
+            prob_offset (float): probability offset
+            diff_threshold (float): difference threshold
+
+        Returns:
+            pd.DataFrame: benefit dataframe. None if not found.
+        """
+        coef_stepsize = 0.001
+
+        # use standard binary search
+        coef_low, coef_high = prob_coef_range
+        benefit_df_low, corr_low = self.__corr_search_helper(
+            coef_low, prob_offset, 'power')
+        benefit_df_high, corr_high = self.__corr_search_helper(
+            coef_high, prob_offset, 'power')
+        if corr_low > target_corr or corr_high < target_corr:
+            return None  # Not Found
+        while corr_low <= corr_high:
+            # don't forget to change this along with stepsize
+            coef_mid = round((coef_low + coef_high) / 2, 3)
+            benefit_df_mid, corr_mid = self.__corr_search_helper(
+                coef_mid, prob_offset, 'power')
+            if SurvivalBenefit.acceptible_corr(corr_mid, target_corr, diff_threshold):
+                return benefit_df_mid
+            if corr_mid < target_corr:
+                coef_low = coef_mid + coef_stepsize
+            else:
+                coef_high = coef_mid - coef_stepsize
+        return None  # Not Found
+
+    def __record_summary_stats(self):
+        """Short summary.
+
+        """
+        if self.benefit_df is None:
+            self.med_benefit_low = None  # median benefit of benefitting patients
+            self.med_benefit_high = None
+            self.percent_certain = None
+            self.percent_uncertain = None  # left-bound
+            self.percent_1mo = None  # percentage of patients with > 1 month benefit
+            self.corr_rho = None
+            self.corr_p = None
+            return
+
+        valid_subset = self.benefit_df[self.benefit_df['valid']]
+        # benefitting percentage
+        stepsize = 100 / self.N
+        self.percent_certain = stepsize * \
+            sum((self.benefit_df['delta_t'] > 1) & (
+                self.benefit_df['left_bound']) & (self.benefit_df['valid']))
+        self.percent_uncertain = stepsize * \
+            sum((self.benefit_df['lb_delta_t'] > 1) & (
+                self.benefit_df['left_bound']) & (self.benefit_df['valid']))
+        self.percent_1mo = stepsize * sum(valid_subset['delta_t'] > 1)
+
+        # median benefit low bound
+        self.med_benefit_low = valid_subset[valid_subset['lb_delta_t'] > 1]['lb_delta_t'].median(
+        )
+
+        # median benefit high bound
+        self.med_benefit_high = valid_subset[valid_subset['delta_t'] > 1]['delta_t'].median(
+        )
+
+        # correlation
+        if self.corr_method == 'kendalltau':
+            r2, p2 = kendalltau(valid_subset['Time'], valid_subset['delta_t'])
+        elif self.corr_method == 'spearmanr':
+            r2, p2 = spearmanr(valid_subset['Time'], valid_subset['delta_t'])
+        self.corr_rho = round(r2, 2)
+        self.corr_p = p2
 
     def __set_survival_data(self, survival_data: SurvivalData | pd.DataFrame | None,
                             name: str | None) -> SurvivalData:
@@ -495,7 +613,6 @@ class SurvivalBenefit:
         self.mono_survival_data.add_weibull_tail()
         self.comb_survival_data.add_weibull_tail()
 
-
     def __align_tmax(self):
         """Align maximum time to be the minimum of the maximum follow-up times of the two curves.
         """
@@ -513,7 +630,7 @@ class SurvivalBenefit:
     def __align_round(self, decimals=5):
         self.mono_survival_data.round_time(decimals)
         self.comb_survival_data.round_time(decimals)
-        
+
     def __prepare_outdir(self, name: str):
         """Create the output directory and return the output directory path
 
@@ -522,50 +639,46 @@ class SurvivalBenefit:
 
         Returns:
             str: output directory full path
-        """        
+        """
         outdir = f'{self.outdir}/{name}'
         new_directory = Path(outdir)
         new_directory.mkdir(parents=True, exist_ok=True)
         return outdir
-
 
     def __get_normalized_difference(self):
         """ Compute the normalized difference in area between the two curves (in time scale)
 
         Returns:
             float: normalized difference
-        """        
+        """
         # calculate normalized difference between two curves
         comb_df = self.comb_survival_data.processed_data
         mono_df = self.mono_survival_data.processed_data
         return 100 * (comb_df['Time'] - mono_df['Time']).sum() / self.N
-
 
     def __get_max_curve(self):
         """Trace the higher (maximum survival) parts of both curves. 
 
         Returns:
             pd.DataFrame: survival data frame
-        """        
+        """
         comb_df = self.comb_survival_data.processed_data
         mono_df = self.mono_survival_data.processed_data
         step = 100 / self.N
         max_curve = pd.DataFrame({'Time': np.maximum(mono_df['Time'], comb_df['Time']),
-                                       'Survival': np.linspace(0, 100 - step, self.N)})
-        return max_curve.round({'Time': 5, 
+                                  'Survival': np.linspace(0, 100 - step, self.N)})
+        return max_curve.round({'Time': 5,
                                 'Survival': int(np.ceil(-np.log10(step)))})
-    
 
     def __generate_info_str(self, n: int, prob_kind: str, prob_coef: float, prob_offset: float):
         return f'N_{n}_prob_{prob_kind}_{prob_coef}_{prob_offset}'
-
 
     def __generate_summary_stats_str(self):
         if self.atrisk is None:
             atrisk_status = "No"
         else:
             atrisk_status = "Yes"
-        
+
         textstr = '\n'.join((f"Date\t{date.today()}",
                              f"Info\t{self.info_str}",
                              f"Monotherapy\t{self.mono_survival_data.name}",
@@ -587,10 +700,10 @@ class SurvivalBenefit:
                                  100 * np.sum(self.benefit_df['valid']) / self.N),
                              "Max_time\t{:.2f}".format(self.tmax),
                              "{0}\t{1:.2f}".format(
-                                 self.corr, self.corr_rho),
-                             "{0}_pvalue\t{1:.2e}".format(self.corr, self.corr_p)))
+                                 self.corr_method, self.corr_rho),
+                             "{0}_pvalue\t{1:.2e}".format(self.corr_method, self.corr_p)))
         return textstr
-    
+
     def __initialize_benefit_df(self):
         # initialize self.benefit_df
         benefit_df = self.mono_survival_data.processed_data.copy()
@@ -602,13 +715,10 @@ class SurvivalBenefit:
         # monotherapy time >= max_time (i.e. invalid result, we don't know zone)
         benefit_df.loc[:, 'valid'] = True
         benefit_df.loc[benefit_df['Time'] >= self.tmax, 'valid'] = False
-        
+
         benefit_df.loc[:, 'new_t'] = benefit_df['Time'].copy()
         benefit_df.loc[:, 'new_surv'] = benefit_df['Survival'].copy()
         benefit_df.loc[:, 'delta_t'] = np.nan
         benefit_df.loc[:, 'lb_delta_t'] = np.nan
 
         return benefit_df
-
-    
-
