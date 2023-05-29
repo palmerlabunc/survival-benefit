@@ -15,27 +15,32 @@ class SurvivalBenefit:
     """This version has the row approach and uses
 
     """
-
-    def __init__(self, N: int, mono_data: SurvivalData, comb_data: SurvivalData,
-                 atrisk=None, corr='spearmanr', 
-                 outdir='.', out_name=None,
+    def __init__(self, N: int, 
+                 mono_data: pd.DataFrame | SurvivalData = None, 
+                 comb_data: pd.DataFrame | SurvivalData = None,
+                 mono_name: str = None, comb_name: str = None,
+                 atrisk: pd.DataFrame = None, corr='spearmanr', 
+                 outdir='.', out_name: str = None,
                  figsize=(6, 4), fig_format='png', save_mode=True):
         """
         Constructs SurvivalBenefit object.
 
         Args:
             N (int): Number of patients to use for simulation.
-            mono_data (SurvivalData): monotherapy data
-            comb_data (SurvivalData): combination therapy data
+            mono_data (pd.DataFrame | SurvivalData, optional): monotherapy data. Defaults to None.
+            comb_data (pd.DataFrame | SurvivalData, optional): combination therapy data. Defaults to None.
+            mono_name (str, optional): monotherapy name. Defaults to None.
+            comb_name (str, optional): combination therapy name. Defaults to None.
             atrisk (pd.DataFrame, optional): at-risk table for monotherapy and control arms. Defaults to None.
             corr (str, optional): correlation metrics (spearmanr or kendalltau). Defaults to 'spearmanr'.
             outdir (str, optional): output directory path. Defaults to '.'.
             out_name (_type_, optional): output file prefix. If None, it will use combination therapy name. Defaults to None.
             figsize (tuple, optional): figure width and height. Defaults to (6, 4).
             fig_format (str, optional): figure format (png, pdf, or jpeg). Defaults to 'png'.
-            save_mode (bool, optional): _description_. Defaults to True.
-        """        
+            save_mode (bool, optional): save the output to files. Defaults to True.
+        """
         plt.style.use('survival_benefit.styles.publication')
+
         # initiate data attributes
         self.N = N
         self.outdir = outdir
@@ -47,9 +52,16 @@ class SurvivalBenefit:
         if self.outdir.endswith('/'):
             self.outdir = self.outdir[:-1]
 
-        self.mono_survival_data = mono_data
-        self.comb_survival_data = comb_data
-        
+        # CAUTION: Do not chnage orders of the functions below
+        # sanity checks for data types for mono_data and comb_data
+        self.mono_survival_data = self.__set_survival_data(
+            mono_data, mono_name)
+        self.comb_survival_data = self.__set_survival_data(
+            comb_data, comb_name)
+
+        # set at risk table
+        self.atrisk = self.__set_atrisk_table(atrisk, comb_name)
+
         self.__align_N()
         self.__add_weibull_tails()
         self.__align_tmax()
@@ -382,6 +394,44 @@ class SurvivalBenefit:
 
         with open(f'{self.outdir}/{self.info_str}{postfix}.summary_stats.tsv', 'w') as f:
             f.write(summary)
+
+    def __set_survival_data(self, survival_data: SurvivalData | pd.DataFrame | None,
+                            name: str | None) -> SurvivalData:
+        """Sanity check the survival data types.
+
+        Args:
+            survival_data (SurvivalData | pd.DataFrame | None): survival data
+            name (str | None): name or filepath to the survival data
+
+        Raises:
+            FileNotFoundError: if the survival data file is not found
+            ValueError: if the survival data types are not the same
+
+        Returns:
+            SurvivalData: the survival data
+        """
+        # valid options
+        # SurvivalData and no name provided
+        if isinstance(survival_data, SurvivalData) and name is None:
+            return survival_data
+        # SurvivalData and name provided
+        if isinstance(survival_data, SurvivalData) and name is not None:
+            survival_data.set_name(name)
+            return survival_data
+        # pd.DataFrame and name provided
+        if isinstance(survival_data, pd.DataFrame) and name is not None:
+            return SurvivalData(name, survival_data, self.N, weibull_tail=True)
+        # name is a filepath prefix (before .csv)
+        if survival_data is None and name is not None:
+            try:
+                df = pd.read_csv(f'{name}.csv', index_col=None, header=0)
+                real_name = name.split('/')[-1]
+                return SurvivalData(real_name, df, self.N, weibull_tail=True)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"{name}.csv not found")
+        # if does not match any valid options
+        raise ValueError(
+            "Invalid survival data type. Provide a SurvivalData object or a pandas DataFrame with a name.")
 
 
     def __add_weibull_tails(self):
