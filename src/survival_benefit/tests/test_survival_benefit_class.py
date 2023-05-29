@@ -15,6 +15,13 @@ class TestToySurvivalBenefit():
         return SurvivalBenefit(1000, mono_data, comb_data, atrisk=None, corr='spearmanr', 
                                outdir='./example/test_output', out_name=None, save_mode=True)
     
+    def test_erroneous_init(self):
+        mono_data = generate_weibull(100, 20, 1, 0.5, const=20)
+        comb_data = generate_weibull(100, 20, 1, 0.5, const=30)
+        error_message = "Invalid survival data type. Provide a SurvivalData object or a pandas DataFrame with a name."
+        with pytest.raises(ValueError, match=error_message):
+            SurvivalBenefit(1000, mono_data, comb_data)
+    
     def test_init(self, survival_benefit):
         assert survival_benefit.N == 1000
         assert survival_benefit.outdir == './example/test_output/comb_data'
@@ -71,6 +78,23 @@ class TestToySurvivalBenefit():
         ori_ids = (survival_benefit.benefit_df.reindex(valid_ids)['new_surv'].sort_values() * n / 100).astype(int).values
         original = survival_benefit.max_curve.reindex(ori_ids)['Time'].values
         assert np.array_equal(reconstructed, original)
+
+    def test_compute_benefit_at_corr(self, survival_benefit):
+        with pytest.raises(AssertionError):
+            survival_benefit.compute_benefit_at_corr(1.1)
+        
+        with pytest.raises(AssertionError):
+            survival_benefit.compute_benefit_at_corr(-1.1)
+        
+        with pytest.warns(UserWarning) as warning_info:
+            survival_benefit.compute_benefit_at_corr(0.5)
+        assert len(warning_info) == 1
+        assert str(warning_info[0].message) == "Correlation 0.5 not found."
+        assert survival_benefit.corr_rho is None
+        assert survival_benefit.benefit_df is None
+
+        survival_benefit.compute_benefit_at_corr(0.75)
+        assert survival_benefit.corr_rho == 0.75
 
     def test_plot_compute_benefit_sanity_check(self, survival_benefit):
         survival_benefit.compute_benefit()
