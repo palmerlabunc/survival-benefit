@@ -56,7 +56,8 @@ def exp_prob(N, k):
 
 def get_prob(N, coef, offset, kind='linear'):
     """ Probabilities of each entry.
-    Returns reveresed order probability because patient 0 has longest time.
+    #FIXME Write an explanation of the function
+    Higher coef will result in higher correlation.
     Linear probability will ignore offset parameter
 
     Args:
@@ -105,4 +106,4 @@ def get_prob(N, coef, offset, kind='linear'):
         prob = np.exp(coef * (patients - 1)) + offset
         prob = prob / np.sum(prob)
 
-    return prob[::-1]
+    return prob
