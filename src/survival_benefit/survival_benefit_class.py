@@ -151,6 +151,9 @@ class SurvivalBenefit:
     def plot_compute_benefit_sanity_check(self, save=True, postfix=""):
         """Sanity check plot of monotherapy, updated, and combination arms.
         """
+        if self.benefit_df is None:
+            warnings.warn("Nothing to plot. Run compute_benefit first.")
+            return
 
         mono_df = self.mono_survival_data.processed_data
         comb_df = self.comb_survival_data.processed_data
@@ -205,6 +208,10 @@ class SurvivalBenefit:
         """Plot survival time for A against added benefit from B.
 
         """
+        if self.benefit_df is None:
+            warnings.warn("Nothing to plot. Run compute_benefit first.")
+            return
+        
         fig, ax = plt.subplots(1, 1, figsize=self.figsize)
         valid_subset = self.benefit_df[self.benefit_df['valid']]
         t_rank = rankdata(valid_subset['Time'], method='average')
@@ -238,6 +245,10 @@ class SurvivalBenefit:
         """Plot benefit distribution.
 
         """
+        if self.benefit_df is None:
+            warnings.warn("Nothing to plot. Run compute_benefit first.")
+            return
+        
         # set up data
         sns.set_style('ticks')
         stepsize = 100 / self.N
@@ -333,6 +344,10 @@ class SurvivalBenefit:
         """Save benefit_df dataframe to csv file.
 
         """
+        if self.benefit_df is None:
+            warnings.warn("Nothing to save. Run compute_benefit first.")
+            return
+        
         assert self.save_mode, "Cannot Save Summary Stats: Not in Save Mode"
         self.benefit_df.to_csv(
             f'{self.outdir}/{self.info_str}{postfix}.table.csv')
@@ -341,6 +356,10 @@ class SurvivalBenefit:
         """Save summary stats information.
 
         """
+        if self.benefit_df is None:
+            warnings.warn("Nothing to save. Run compute_benefit first.")
+            return
+        
         assert self.save_mode, "Cannot Save Summary Stats: Not in Save Mode"
         summary = self.__generate_summary_stats_str()
 
@@ -580,7 +599,7 @@ class SurvivalBenefit:
         # check if the atrisk table is valid
         if not isinstance(atrisk, pd.DataFrame):
             return None
-        elif atrisk.columns != ['control', 'treatment', 'time']:
+        elif not (atrisk.columns == ['control', 'treatment', 'time']).all():
             warnings.warn(
                 "Invalid atrisk table. Must have columns ['control', 'treatment', 'time']. Setting atrisk table to None.")
             return None
@@ -680,11 +699,15 @@ class SurvivalBenefit:
         return f'N_{n}_prob_{prob_kind}_{prob_coef}_{prob_offset}'
 
     def __generate_summary_stats_str(self):
+
+        if self.benefit_df is None:
+            warnings.warn("Nothing to save. Run compute_benefit first.")
+            return
+        
         if self.atrisk is None:
             atrisk_status = "No"
         else:
             atrisk_status = "Yes"
-
         textstr = '\n'.join((f"Date\t{date.today()}",
                              f"Info\t{self.info_str}",
                              f"Monotherapy\t{self.mono_survival_data.name}",
