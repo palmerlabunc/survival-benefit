@@ -12,7 +12,7 @@ class TestToySurvivalBenefit():
     def survival_benefit(self):
         mono_data = SurvivalData("mono_data", generate_weibull(100, 20, 1, 0.5, const=20), 1000, atrisk=None, tmax=15)
         comb_data = SurvivalData("comb_data", generate_weibull(100, 20, 1, 0.5, const=30), 1500, atrisk=None, tmax=18)
-        return SurvivalBenefit(1000, mono_data, comb_data, atrisk=None, corr='spearmanr', 
+        return SurvivalBenefit(mono_data=mono_data, comb_data=comb_data, n_patients=1000, atrisk=None, corr='spearmanr', 
                                outdir='./example/test_output', out_name=None, save_mode=True)
     
     def test_erroneous_init(self):
@@ -110,3 +110,11 @@ class TestToySurvivalBenefit():
         survival_benefit.compute_benefit()
         ax = survival_benefit.plot_benefit_distribution(save=True)
         #assert ax is None
+
+    def test_get_atrisk_filename_from_comb_name(self):
+        atrisk_filepath = SurvivalBenefit.get_atrisk_filename_from_comb_name(
+            'Colorectal_Ramucirumab-FOLFIRI_Tabernero2015_OS')
+        assert atrisk_filepath == 'Colorectal_Ramucirumab_Tabernero2015_OS_at-risk.csv'
+
+        atrisk_filepath = SurvivalBenefit.get_atrisk_filename_from_comb_name('data/clinical_trials/main_combo/Colorectal_Ramucirumab-FOLFIRI_Tabernero2015_OS')
+        assert atrisk_filepath == 'data/clinical_trials/main_combo/Colorectal_Ramucirumab_Tabernero2015_OS_at-risk.csv'

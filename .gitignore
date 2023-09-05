@@ -3,6 +3,7 @@ tables/*
 data/*
 src/_pycache_/
 src/*.ipynb
+src/notebooks/*
 src/.pytest_cache
 src/local_survival_benefit.egg-info/
 doc/*
