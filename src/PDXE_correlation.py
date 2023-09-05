@@ -7,7 +7,6 @@ from scipy.stats import pearsonr
 from collections.abc import Iterable
 from utils import load_config
 
-plt.style.use('env/publication.mplstyle')
 
 def get_pdx_corr_data(df: pd.DataFrame, model_info: pd.DataFrame,
                       drug1: str, drug2: str, metric='BestAvgResponse'):
@@ -42,6 +41,7 @@ def draw_corr_pdx(processed_df):
     Returns:
         plt.figure: plotted figure
     """
+    plt.style.use('env/publication.mplstyle')
     drug1 = processed_df.columns[0]
     drug2 = processed_df.columns[1]
     r, p = pearsonr(processed_df[drug1], processed_df[drug2])
