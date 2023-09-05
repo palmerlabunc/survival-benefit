@@ -2,24 +2,22 @@ from dataclasses import dataclass, field, InitVar
 from typing import Optional
 import pandas as pd
 import numpy as np
-from survival_benefit.cleanup_KMcurves import cleanup_survival_data
 from survival_benefit.utils import interpolate, weibull_from_digitized
-
 
 @dataclass
 class SurvivalData:
     name: str
     uncleaned_data: InitVar[pd.DataFrame]
     N: int
-    atrisk: Optional[pd.Series]
-    tmax: Optional[float]
+    atrisk: pd.Series | None = None
+    tmax: float | None = None
     weibull_tail: bool = False
     
     original_data: pd.DataFrame = field(init=False)
     processed_data: pd.DataFrame = field(init=False)
 
     def __post_init__(self, uncleaned_data):
-        self.original_data = cleanup_survival_data(uncleaned_data)
+        self.original_data = SurvivalData.cleanup_digitized_km_curve(uncleaned_data)
         if self.tmax is None:
             if self.atrisk is None:
                 tmax = np.round(self.original_data['Time'].max(), 5)
@@ -28,6 +26,43 @@ class SurvivalData:
             self.tmax = tmax
         self.processed_data = self.__prepare_data()
 
+    @staticmethod
+    def cleanup_digitized_km_curve(input_df: pd.DataFrame) -> pd.DataFrame:
+        """ Import survival data either having two columns (time, survival).
+
+        Args:
+            input_df (pd.DataFrame): survival data with two columns.
+
+        Returns:
+            pd.DataFrame: returned data frame
+        """
+        df = input_df.copy()
+        if not ('Time' in df.columns and 'Survival' in df.columns):
+            df.columns = ['Time', 'Survival']
+        # if survival is in 0-1 scale, convert to 0-100
+        if df['Survival'].max() <= 1.1:
+            df.loc[:, 'Survival'] = df['Survival'] * 100
+        
+        # normalize everything to [0, 100]
+        df.loc[:, 'Survival'] = 100 * df['Survival'] / df['Survival'].max()
+        df.loc[df['Survival'] < 0, 'Survival'] = 0
+        df.loc[df['Time'] <= 0, 'Time'] = 0.00001
+
+        # make sure survival is in increasing order
+        if df.iat[-1, 1] < df.iat[0, 1]:
+            #df = df.sort_values(['Survival'], ascending=True).drop_duplicates()
+            df = df.sort_values(['Survival', 'Time'], 
+                                ascending=[True, False]).drop_duplicates()
+            df = df.reset_index(drop=True)
+
+        # enforce monotinicity
+        df.loc[:, 'Survival'] = np.maximum.accumulate(
+            df['Survival'].values)  # monotonic increasing
+        df.loc[:, 'Time'] = np.minimum.accumulate(
+            df['Time'].values)  # monotonic decreasing
+        
+        return df
+    
     def set_name(self, name: str):
         self.name = name.strip()
     
@@ -96,15 +131,19 @@ class SurvivalData:
         """
         df = self.original_data.copy()
         # add starting point (survival=100, time=0) if not already there
-        if df.iat[-1, 0] != 0 and df.iat[-1, 1] != 100:
-            df = df.append(pd.DataFrame({'Survival': 100, 'Time': 0}, 
-                                        index=[df.shape[0]]))
+        if df.iat[-1, 0] != 0.00001 and df.iat[-1, 1] != 100:
+            df = pd.concat([df,
+                            pd.DataFrame({'Survival': 100, 'Time': 0.00001}, 
+                                         index=[df.shape[0]])], 
+                           axis=0)
         min_survival = df['Survival'].min()
+        # remove duplicate survival values
+        df = df.drop_duplicates(subset=['Survival'], keep='first')  #FIXME testing keeping the longest time
         step = 100 / self.N
         f = interpolate(df, x='Survival', y='Time')  # survival -> time
         if min_survival <= 0:
-                points = np.linspace(0, 100 - step, self.N)
-                new_df = pd.DataFrame({'Time': f(points), 'Survival': points})
+            points = np.linspace(0, 100 - step, self.N)
+            new_df = pd.DataFrame({'Time': f(points), 'Survival': points})
         else:
             existing_n = int(np.round((100 - min_survival) / 100 * self.N, 0))
             existing_points = np.linspace(
@@ -113,8 +152,10 @@ class SurvivalData:
             # pad patients from [0, min_survival]
             new_df = pd.DataFrame({'Time': df['Time'].max(),
                                    'Survival': np.linspace(0, 100 * (self.N - existing_n) / self.N, self.N - existing_n)})
-            new_df = new_df.append(pd.DataFrame({'Survival': existing_points,
-                                                 'Time': f(existing_points)}))
+            new_df = pd.concat([new_df, 
+                                pd.DataFrame({'Survival': existing_points,
+                                              'Time': f(existing_points)})],
+                                axis=0)
             new_df = new_df.round(
                 {'Time': 5, 'Survival': int(np.ceil(-np.log10(step)))})
         assert new_df.shape[0] == self.N
@@ -131,13 +172,12 @@ class SurvivalData:
         if original.iat[0, 0] > weibull.iat[min_survival_idx - 1, 0]:
             weibull_surv_at_tmax = weibull[weibull['Time'] >= self.tmax].index.max()
             if np.isnan(weibull_surv_at_tmax):
-                print("No Weibull Tail")
                 return populated
             fill_range = np.array(
                 range(weibull_surv_at_tmax,  min_survival_idx))
             tmp = pd.DataFrame({'Survival': 100 * fill_range / self.N,
                                 'Time': self.tmax},
-                               index=fill_range)
+                                index=fill_range)
             merged = pd.concat([weibull.loc[:weibull_surv_at_tmax - 1, :], tmp, original], axis=0)
         else: # if weibull fit is higher at the end of follow-up
             weibull_tail = weibull.loc[:min_survival_idx - 1, :]
@@ -148,4 +188,4 @@ class SurvivalData:
         assert merged.index.is_unique
         assert merged.shape[0] == self.N
         
-        return merged    
+        return merged
