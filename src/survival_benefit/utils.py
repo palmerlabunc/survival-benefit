@@ -131,8 +131,11 @@ def fit_weibull_survival(params, args):
     dat = args
     s = dat['Survival'].values
     t_true = dat['Time'].values
-    t = b * (-np.log(s / 100))**(1 / a)
-    return sse(t_true, t)
+    with np.errstate(divide='ignore'):
+        t = b * (-np.log(s / 100))**(1 / a)
+    with np.errstate(invalid='ignore'):
+        result = sse(t_true, t)
+    return result
 
 
 def weibull_from_digitized(df: pd.DataFrame, N: int, tmax: float) -> pd.DataFrame:
@@ -149,7 +152,7 @@ def weibull_from_digitized(df: pd.DataFrame, N: int, tmax: float) -> pd.DataFram
     params0 = (1, 1)  # initial guess (a, b)
     bnds = ((0.01, 5), (0.01, 1000))  # parameter bounds
     res = minimize(fit_weibull_survival, params0,
-                   args=(df[df['Time'] < tmax],),
+                   args=(df[(df['Time'] < tmax)],),
                    method='L-BFGS-B', bounds=bnds)
     data = get_weibull_survival_dataframe(res.x[0], res.x[1], N)
     return data

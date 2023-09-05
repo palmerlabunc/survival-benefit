@@ -36,7 +36,7 @@ def create_main_combo_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.D
         try:
             year = int(row['Year'])
         except ValueError:
-            print(i)
+            print(idx)
         n_combo = int(row['Combination Arm N'])
         n_control = int(row['Control Arm N'])
         corr = row['Pearsonr']

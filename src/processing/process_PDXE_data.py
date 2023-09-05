@@ -44,8 +44,9 @@ def process_pdx_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def main():
     dat, tumor_types = process_pdx_data()
-    dat.to_csv(f'{DATA_DIR}/PDXE_drug_response.csv', index=False)
-    tumor_types.to_csv(f'{DATA_DIR}/PDXE_model_info.csv')
+    tumor_types.to_csv(f'{DATA_DIR}/PDXE_model_info.csv', index=False)
+    dat.merge(tumor_types, on='Model', how='left').to_csv(
+        f'{DATA_DIR}/PDXE_drug_response.csv', index=False)
 
 
 if __name__ == '__main__':

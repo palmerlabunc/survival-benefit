@@ -27,7 +27,7 @@ def raw_import(filepath: str) -> pd.DataFrame:
     return df
 
 
-def preprocess_survival_data(filepath: str) -> pd.DataFrame:
+def preprocess_survival_data_from_filepath(filepath: str) -> pd.DataFrame:
     """ Import survival data either having two columns (time, survival) or one
     column (time)
 
@@ -38,6 +38,24 @@ def preprocess_survival_data(filepath: str) -> pd.DataFrame:
         pd.DataFrame: returned data frame
     """
     df = raw_import(filepath)
+    df = cleanup_survival_data(df)
+    return df
+
+def preprocess_survival_data_from_df(df: pd.DataFrame) -> pd.DataFrame:
+    """ Import survival data either having two columns (time, survival) or one
+    column (time)
+
+    Args:
+        filepath (str): path to survival data file
+
+    Returns:
+        pd.DataFrame: returned data frame
+    """
+    if not ('Time' in df.columns and 'Survival' in df.columns):
+        df.columns = ['Time', 'Survival']
+    # if survival is in 0-1 scale, convert to 0-100
+    if df['Survival'].max() <= 1.1:
+        df.loc[:, 'Survival'] = df['Survival'] * 100
     df = cleanup_survival_data(df)
     return df
 
