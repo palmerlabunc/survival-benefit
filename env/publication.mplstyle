@@ -1,11 +1,11 @@
 ### FIGURE
 figure.facecolor: white
 figure.dpi: 600
-figure.titlesize: 9
+figure.titlesize: 7
 figure.titleweight: bold
 
 ### LEGEND
-legend.fontsize: 9
+legend.fontsize: 7
 
 ### TICKS
 xtick.direction: out
@@ -14,14 +14,14 @@ ytick.direction: out
 ### FONTS
 font.family: sans-serif
 font.sans-serif: Arial
-font.size: 9
+font.size: 7
 
 ### AXES
 axes.grid: False
 axes.facecolor: white
 axes.linewidth: 1.0
-axes.titlesize: 9
-axes.labelsize: 9
+axes.titlesize: 7
+axes.labelsize: 7
 axes.spines.top: False
 axes.spines.right: False
 
