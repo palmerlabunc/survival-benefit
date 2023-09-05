@@ -11,31 +11,37 @@ from scipy.stats import kendalltau, spearmanr, rankdata
 from survival_benefit.prob_functions import get_prob
 from survival_benefit.survival_data_class import SurvivalData
 
-
 class SurvivalBenefit:
     """This version has the row approach and uses
 
     """
-
-    def __init__(self, N: int,
+    def __init__(self,
                  mono_data: pd.DataFrame | SurvivalData = None,
                  comb_data: pd.DataFrame | SurvivalData = None,
                  mono_name: str = None, comb_name: str = None,
+                 n_patients: int = 500,
                  atrisk: pd.DataFrame = None, corr='spearmanr',
                  outdir='.', out_name: str = None,
                  figsize=(6, 4), fig_format='png', save_mode=True):
         """
-        Constructs SurvivalBenefit object.
+        Constructs SurvivalBenefit object. Valid combinations of arguments are:
+        1. mono_/comb_data as a SurvivalData object
+        2. mono_/comb_data as a pandas DataFrame with a name
+        3. mono_/comb_name as a filepath prefix (before .csv)
 
         Args:
-            N (int): Number of patients to use for simulation.
             mono_data (pd.DataFrame | SurvivalData, optional): monotherapy data. Defaults to None.
             comb_data (pd.DataFrame | SurvivalData, optional): combination therapy data. Defaults to None.
-            mono_name (str, optional): monotherapy name. Defaults to None.
-            comb_name (str, optional): combination therapy name. Defaults to None.
-            atrisk (pd.DataFrame, optional): at-risk table for monotherapy and control arms. Defaults to None.
+            mono_name (str, optional): monotherapy name. 
+                If a file path before the exension (.csv) is given, the csv file will be read. Defaults to None.
+            comb_name (str, optional): combination therapy name. 
+                If a file path before the exension (.csv) is given, the csv file will be read. Defaults to None.
+            n_patients (int): Number of virtual patients to use for simulation. Defaults to 500.
+            atrisk (pd.DataFrame, optional): at-risk table for monotherapy and control arms.
+                If None, it will automatically look for the at-risk table from disk.  Defaults to None.
             corr (str, optional): correlation metrics (spearmanr or kendalltau). Defaults to 'spearmanr'.
-            outdir (str, optional): output directory path. Defaults to '.'.
+            outdir (str, optional): output directory path. 
+                SurvivalBenefit will create a subdirectory in `outdir` with the given `out_name`. Defaults to '.'.
             out_name (_type_, optional): output file prefix. If None, it will use combination therapy name. Defaults to None.
             figsize (tuple, optional): figure width and height. Defaults to (6, 4).
             fig_format (str, optional): figure format (png, pdf, or jpeg). Defaults to 'png'.
