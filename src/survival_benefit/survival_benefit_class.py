@@ -50,7 +50,7 @@ class SurvivalBenefit:
         plt.style.use('survival_benefit.styles.publication')
 
         # initiate data attributes
-        self.N = N
+        self.N = n_patients
         self.outdir = outdir
         self.atrisk = atrisk
         self.figsize = figsize
@@ -99,7 +99,47 @@ class SurvivalBenefit:
     def __str__(self) -> str:
         return self.__generate_summary_stats_str()
 
-    def set_tmax(self, tmax):
+    @staticmethod
+    def acceptible_corr(corr: float, target_corr: float, diff_threshold: float = 0.005) -> bool:
+        """Check if the correlation is acceptible.
+
+        Args:
+            corr (float): correlation
+            target_corr (float): target correlation
+            diff_threshold (float): difference threshold. Defaults to 0.005.
+
+        Returns:
+            bool: True if the correlation is acceptible
+        """
+        return abs(corr - target_corr) < diff_threshold
+
+    @staticmethod
+    def get_atrisk_filename_from_comb_name(comb_name: str) -> str:
+        """Get the filename of the atrisk table from the combo survival data name.
+
+        Args:
+            comb_name (str): combo survival data name
+
+        Returns:
+            str: atrisk table filename
+        """
+        comb_file_tokens = comb_name.rsplit(
+            '/', 1)  # split by last '/' to seperate directory path and file prefix
+        comb_file_prefix = comb_file_tokens[-1]
+        tokens = comb_file_prefix.split('_', 2)
+        try:
+            drug_names = tokens[1].split('-')
+        except IndexError:
+            return ""
+        
+        experimental_drug = drug_names[0]
+        if len(comb_file_tokens) > 1:  # if it has a directory path
+            atrisk_filepath = f'{comb_file_tokens[0]}/{tokens[0]}_{experimental_drug}_{tokens[2]}_at-risk.csv'
+        else:
+            atrisk_filepath = f'{tokens[0]}_{experimental_drug}_{tokens[2]}_at-risk.csv'
+        return atrisk_filepath
+
+    def set_tmax(self, tmax: float):
         self.tmax = tmax
         self.mono_survival_data.set_tmax(tmax)
         self.comb_survival_data.set_tmax(tmax)
@@ -133,20 +173,6 @@ class SurvivalBenefit:
 
         self.benefit_df = benefit_df
         self.__record_summary_stats()
-
-    @staticmethod
-    def acceptible_corr(corr: float, target_corr: float, diff_threshold: float = 0.005) -> bool:
-        """Check if the correlation is acceptible.
-
-        Args:
-            corr (float): correlation
-            target_corr (float): target correlation
-            diff_threshold (float): difference threshold. Defaults to 0.005.
-
-        Returns:
-            bool: True if the correlation is acceptible
-        """
-        return abs(corr - target_corr) < diff_threshold
 
     def plot_compute_benefit_sanity_check(self, save=True, postfix=""):
         """Sanity check plot of monotherapy, updated, and combination arms.
@@ -588,7 +614,7 @@ class SurvivalBenefit:
         """
         if atrisk is None and comb_name is not None:
             try:
-                atrisk_filepath = SurvivalBenefit.__get_atrisk_filename_from_comb_name(
+                atrisk_filepath = SurvivalBenefit.get_atrisk_filename_from_comb_name(
                     comb_name)
                 atrisk = pd.read_csv(atrisk_filepath, index_col=None, header=0)
             except FileNotFoundError:
@@ -611,25 +637,6 @@ class SurvivalBenefit:
         self.comb_survival_data.atrisk = atrisk['treatment']
 
         return atrisk
-
-    @staticmethod
-    def __get_atrisk_filename_from_comb_name(comb_name: str) -> str:
-        """Get the filename of the atrisk table from the combo survival data name.
-
-        Args:
-            comb_name (str): combo survival data name
-
-        Returns:
-            str: atrisk table filename
-        """
-        comb_file_tokens = comb_name.rsplit(
-            '/', 1)  # split by last '/' to seperate directory path and file prefix
-        comb_file_prefix = comb_file_prefix[-1]
-        tokens = comb_file_prefix.split('_', 2)
-        drug_names = tokens[1].split('-')
-        experimental_drug = drug_names[0]
-        atrisk_filepath = f'{comb_file_tokens[0]}/{tokens[0]}_{experimental_drug}_{tokens[2]}_at-risk.csv'
-        return atrisk_filepath
 
     def __add_weibull_tails(self):
         """Add weibull tails to the mono and combo survival data if they don't exist
