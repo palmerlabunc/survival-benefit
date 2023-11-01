@@ -500,13 +500,11 @@ class SurvivalBenefit:
 
         Returns:
             float: correlation
+            float: p-value
         """
         valid_subset = benefit_df[benefit_df['valid']]
-        if self.corr_method == 'kendalltau':
-            r2, p2 = kendalltau(valid_subset['Time'], valid_subset['delta_t'])
-        elif self.corr_method == 'spearmanr':
-            r2, p2 = spearmanr(valid_subset['Time'], valid_subset['delta_t'])
-        return r2
+        r2, p2 = spearmanr(valid_subset['Time'], valid_subset['delta_t'])
+        return r2, p2
 
     def __corr_search_helper(self, prob_coef: float, prob_offset=0.0, prob_kind='power') -> float:
         """Helper function for corr_search.
@@ -517,11 +515,12 @@ class SurvivalBenefit:
             prob_kind (str, optional): probability kind. Defaults to 'power'.
 
         Returns:
-            float: correlation
+            pd.DataFrame: benefit dataframe
+            float: actual correlation
         """
         benefit_df = self.__compute_benefit_helper(
             prob_coef, prob_offset, prob_kind)
-        corr = self.__compute_corr_from_benefit_df(benefit_df)
+        corr, p = self.__compute_corr_from_benefit_df(benefit_df)
         return benefit_df, corr
 
     def __corr_search(self, target_corr: float, prob_coef_range: tuple, prob_offset: float, diff_threshold: float):
