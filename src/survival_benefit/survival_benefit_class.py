@@ -76,18 +76,50 @@ class SurvivalBenefit:
         self.__align_round()
         self.max_curve = self.__get_max_curve()
         self.norm_diff = self.__get_normalized_difference()
+        self.rng = np.random.default_rng(0)
 
-        # These will change with each run of fit_curve
+        # These will change with each run of compute_benefit
+        self.info_str = ''
         self.benefit_df = None  # survival benefit profile dataframe
-        self.info_str = None
-        self.med_benefit_low = None  # median benefit of benefitting patients
-        self.med_benefit_high = None
-        self.percent_certain = None
-        self.percent_uncertain = None  # left-bound
-        self.percent_1mo = None  # percentage of patients with > 1 month benefit
-        self.corr_method = corr  # correlation type: kendalltau or spearmanr
-        self.corr_rho = None
-        self.corr_p = None
+        self.corr_rho_target = None # target correlation
+        self.corr_rho_actual = None # actual correlation
+        self.used_bestmatch_corr = None
+        self.prob_kind = None
+        self.prob_coef = None
+        self.prob_offset = None
+        self.stats = pd.Series(np.nan,
+                               index=['Monotherapy', 'Combination',
+                                      'At_risk_table', 'Normalized_difference',
+                                      'N',
+                                      'Datetime',
+                                      'Max_time',
+                                      'Correlation_method',
+                                      'Correlation_value_target',
+                                      'Correlation_value_actual',
+                                      'Correlation_pvalue',
+                                      'Used_bestmatch_corr',
+                                      'Prob_kind', 'Prob_coef', 'Prob_offset',
+                                      'Median_benefit_lowbound', 
+                                      'Median_benefit_highbound',
+                                      'Percent_patients_valid',
+                                      'Percent_patients_benefitting_1mo_from_total_highbound',
+                                      'Percent_patients_benefitting_1mo_from_valid_highbound',
+                                      'Percent_patients_benefitting_1mo_from_total_lowbound',
+                                      'Percent_patients_benefitting_1mo_from_valid_lowbound',
+                                      'Percent_patients_certain_from_total',
+                                      'Percent_patients_leftbound_from_total'])
+        
+        # initialization of stats df
+        
+        self.stats['Monotherapy'] = self.mono_survival_data.name
+        self.stats['Combination'] = self.comb_survival_data.name
+        self.stats['N'] = self.N
+        if self.atrisk is None:
+            self.stats['At_risk_table'] = "No"
+        else:
+            self.stats['At_risk_table'] = "Yes"
+        self.stats['Normalized_difference'] = np.round(self.norm_diff, 2)
+        self.stats['Correlation_method'] = 'spearmanr'
 
         if self.save_mode:
             if out_name is None:
@@ -295,6 +327,9 @@ class SurvivalBenefit:
                                   'Time': np.sort(delta1.values)[::-1]})
         delta_df2 = pd.DataFrame({'Survival': np.linspace(unknown, 100 - stepsize, delta2.size),
                                   'Time': np.sort(delta2.values)[::-1]})
+
+        med_benefit_low = self.stats['Median_benefit_lowbound']
+        med_benefit_high = self.stats['Median_benefit_highbound']
 
         # plot
         fig, ax = plt.subplots(1, 1, figsize=self.figsize)
@@ -525,46 +560,61 @@ class SurvivalBenefit:
         return None  # Not Found
 
     def __record_summary_stats(self):
-        """Short summary.
+        """Record summary stats based on benefit_df. This method records the part where
+        the values change with each run of compute_benefit.
 
         """
         if self.benefit_df is None:
-            self.med_benefit_low = None  # median benefit of benefitting patients
-            self.med_benefit_high = None
-            self.percent_certain = None
-            self.percent_uncertain = None  # left-bound
-            self.percent_1mo = None  # percentage of patients with > 1 month benefit
-            self.corr_rho = None
-            self.corr_p = None
+            self.stats.iloc[5:] = None  # set to None from Datetime onwards
             return
 
         valid_subset = self.benefit_df[self.benefit_df['valid']]
         # benefitting percentage
         stepsize = 100 / self.N
-        self.percent_certain = stepsize * \
-            sum((self.benefit_df['delta_t'] > 1) & (
-                self.benefit_df['left_bound']) & (self.benefit_df['valid']))
-        self.percent_uncertain = stepsize * \
-            sum((self.benefit_df['lb_delta_t'] > 1) & (
-                self.benefit_df['left_bound']) & (self.benefit_df['valid']))
-        self.percent_1mo = stepsize * sum(valid_subset['delta_t'] > 1)
+        
+        # percentage of patients with certain benefit (not at the wibull extrapolated region)
+        percent_certain = stepsize * sum(~self.benefit_df['left_bound'] & self.benefit_df['valid'])
+        
+        percent_uncertain = stepsize * sum(self.benefit_df['left_bound'] & self.benefit_df['valid'])
+        
+        percent_1mo = stepsize * sum(valid_subset['delta_t'] >= 1)
+        percent_1mo_lb = stepsize * sum(valid_subset['lb_delta_t'] >= 1)
+        percent_valid = stepsize * valid_subset.shape[0]
 
-        # median benefit low bound
-        self.med_benefit_low = valid_subset[valid_subset['lb_delta_t'] > 1]['lb_delta_t'].median(
-        )
+        # median benefit among patients with >= 1 month left-bound benefit
+        med_benefit_low = valid_subset[valid_subset['lb_delta_t'] >= 1]['lb_delta_t'].median()
 
-        # median benefit high bound
-        self.med_benefit_high = valid_subset[valid_subset['delta_t'] > 1]['delta_t'].median(
-        )
+        # median benefit among patients with >= 1 month benefit (weibull extrapolated)
+        med_benefit_high = valid_subset[valid_subset['delta_t'] >= 1]['delta_t'].median()
 
         # correlation
-        if self.corr_method == 'kendalltau':
-            r2, p2 = kendalltau(valid_subset['Time'], valid_subset['delta_t'])
-        elif self.corr_method == 'spearmanr':
-            r2, p2 = spearmanr(valid_subset['Time'], valid_subset['delta_t'])
-        self.corr_rho = round(r2, 2)
-        self.corr_p = p2
+        corr_rho_actual, corr_p = self.__compute_corr_from_benefit_df(self.benefit_df)
+        self.corr_rho_actual = corr_rho_actual
 
+        # record summary stats
+        self.stats['Datetime'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.stats['Max_time'] = np.round(self.tmax, 2)
+        if self.corr_rho_target is not None:
+            self.stats['Correlation_value_target'] = np.round(self.corr_rho_target, 2)
+        self.stats['Correlation_value_actual'] = np.round(corr_rho_actual, 2)
+        self.stats['Correlation_pvalue'] = corr_p
+        self.stats['Used_bestmatch_corr'] = self.used_bestmatch_corr
+        self.stats['Prob_kind'] = self.prob_kind
+        self.stats['Prob_coef'] = self.prob_coef
+        self.stats['Prob_offset'] = self.prob_offset
+        self.stats['Median_benefit_lowbound'] = np.round(med_benefit_low, 2)
+        self.stats['Median_benefit_highbound'] = np.round(med_benefit_high, 2)
+        self.stats['Percent_patients_valid'] = np.round(percent_valid, 2)
+        self.stats['Percent_patients_benefitting_1mo_from_total_highbound'] = np.round(percent_1mo, 2)
+        self.stats['Percent_patients_benefitting_1mo_from_valid_highbound'] = np.round(100 * percent_1mo / percent_valid, 2)
+        self.stats['Percent_patients_benefitting_1mo_from_total_lowbound'] = np.round(percent_1mo_lb, 2)
+        self.stats['Percent_patients_benefitting_1mo_from_valid_lowbound'] = np.round(100 * percent_1mo_lb / percent_valid, 2)
+        self.stats['Percent_patients_certain_from_total'] = np.round(percent_certain, 2)
+        self.stats['Percent_patients_leftbound_from_total'] = np.round(percent_uncertain, 2)
+
+        # generate info str
+        self.info_str = self.__generate_info_str()
+       
     def __set_survival_data(self, survival_data: SurvivalData | pd.DataFrame | None,
                             name: str | None) -> SurvivalData:
         """Sanity check the survival data types.
@@ -702,43 +752,11 @@ class SurvivalBenefit:
         return max_curve.round({'Time': 5,
                                 'Survival': int(np.ceil(-np.log10(step)))})
 
-    def __generate_info_str(self, n: int, prob_kind: str, prob_coef: float, prob_offset: float):
-        return f'N_{n}_prob_{prob_kind}_{prob_coef}_{prob_offset}'
-
-    def __generate_summary_stats_str(self):
-
-        if self.benefit_df is None:
-            warnings.warn("Nothing to save. Run compute_benefit first.")
-            return
-        
-        if self.atrisk is None:
-            atrisk_status = "No"
+    def __generate_info_str(self):
+        if self.corr_rho_target is None:
+            return f'N_{self.N}.target_corr_None.actual_corr_{self.corr_rho_actual:.2f}'
         else:
-            atrisk_status = "Yes"
-        textstr = '\n'.join((f"Date\t{date.today()}",
-                             f"Info\t{self.info_str}",
-                             f"Monotherapy\t{self.mono_survival_data.name}",
-                             f"Combination\t{self.comb_survival_data.name}",
-                             f"At_risk_table\t{atrisk_status}",
-                             "Normalized_difference\t{:.2f}".format(
-                                 self.norm_diff),
-                             "Median_benefit_lowbound\t{:.2f}".format(
-                                 self.med_benefit_low),
-                             "Median_benefit_highbound\t{:.2f}".format(
-                                 self.med_benefit_high),
-                             "Percentage_of_patients_benefitting_1mo\t{:.2f}".format(
-                                 self.percent_1mo),
-                             "Percentage_of_patients_benefitting_certain\t{:.2f}".format(
-                                 self.percent_certain),
-                             "Percentage_of_patients_benefitting_leftbound\t{:.2f}".format(
-                                 self.percent_uncertain),
-                             "Percentage_of_patients_valid\t{:.2f}".format(
-                                 100 * np.sum(self.benefit_df['valid']) / self.N),
-                             "Max_time\t{:.2f}".format(self.tmax),
-                             "{0}\t{1:.2f}".format(
-                                 self.corr_method, self.corr_rho),
-                             "{0}_pvalue\t{1:.2e}".format(self.corr_method, self.corr_p)))
-        return textstr
+            return f'N_{self.N}.target_corr_{self.corr_rho_target:.2f}.actual_corr_{self.corr_rho_actual:.2f}'
 
     def __initialize_benefit_df(self):
         # initialize self.benefit_df
