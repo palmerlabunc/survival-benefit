@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 import warnings
 import numpy as np
@@ -189,24 +189,40 @@ class SurvivalBenefit:
         # record summary stats
         self.__record_summary_stats()
 
-    def compute_benefit_at_corr(self, corr: float):
+    def compute_benefit_at_corr(self, corr: float, use_bestmatch=False):
         """Compute the survival benefit of the added drug at a given correlation. The given correlation value
         will be rounded to two decimal points.
 
         Args:
             corr (float): correlation value. Must be between -1 and 1.
+            use_bestmatch (bool, optional): use the best match correlation if the given correlation is not found. 
+                Defaults to False.
         """
         assert corr >= -1 and corr <= 1, "Correlation must be between -1 and 1."
         corr = round(corr, 2)
+        self.corr_rho_target = corr
         prob_coef_range = (-50, 50)
         benefit_df = self.__corr_search(corr, prob_coef_range, 0, 0.005)
-        if benefit_df is None:
-            warnings.warn(f"Correlation {corr} not found.")
 
-        self.benefit_df = benefit_df
-        self.__record_summary_stats()
+        if benefit_df is not None:
+            self.benefit_df = benefit_df            
+            self.used_bestmatch_corr = False
+            self.__record_summary_stats()
+            return
+        
+        warnings.warn(f"Correlation {corr} not found.")
+        if use_bestmatch:
+            self.used_bestmatch_corr = True
+            warnings.warn("Using best match correlation.")
+            self.compute_benefit(-50)
+            if self.corr_rho_target < self.corr_rho_actual:
+                warnings.warn(f"Using lowest compatible correlation {self.corr_rho_actual} instead of given correlation {self.corr_rho_target}.")
+            else:
+                self.compute_benefit(50)
+                warnings.warn(
+                    f"Using highest compatible correlation {self.corr_rho_actual} instead of given correlation {self.corr_rho_target}.")
 
-    def plot_compute_benefit_sanity_check(self, save=True, postfix=""):
+    def plot_compute_benefit_sanity_check(self, save=True, postfix="") -> plt.axes:
         """Sanity check plot of monotherapy, updated, and combination arms.
         """
         if self.benefit_df is None:
@@ -224,6 +240,7 @@ class SurvivalBenefit:
             comb_min_surv_idx = comb_df[comb_df['Time'] >= self.tmax].index[-1]
         except IndexError:
             comb_min_surv_idx = 0
+        # bounded by tmax
         left_bound_range = np.arange(
             mono_min_surv_idx, comb_min_surv_idx, 1) / self.N * 100
 
@@ -284,8 +301,7 @@ class SurvivalBenefit:
                     y=deltat_rank,
                     scatter=False, ax=ax, color='orange')
 
-        ax.set_title('{corr}={r:.2f} p={p:.2e}'.format(
-            corr=self.corr_method, r=self.corr_rho, p=self.corr_p))
+        ax.set_title(f'Spearmanr={self.corr_rho_actual:.2f}')
         sns.despine()
         ax.set_xlim(0, self.N + 10)
         ax.set_ylim(0, self.N + 10)
@@ -361,23 +377,23 @@ class SurvivalBenefit:
             ax.axhspan(100, 105, color='papayawhip', alpha=0.5)
 
             # lower bound annotation
-            ax.annotate(str(round(self.med_benefit_low, 1)),
-                        xy=(self.med_benefit_low, 100), xycoords='data',
-                        xytext=(self.med_benefit_low - 2, 90), textcoords='data',
+            ax.annotate(str(round(med_benefit_low, 1)),
+                        xy=(med_benefit_low, 100), xycoords='data',
+                        xytext=(med_benefit_low - 2, 90), textcoords='data',
                         arrowprops=dict(arrowstyle="-", color='k'))
             # make median range rectangle
-            med_range = patches.Rectangle((self.med_benefit_low, 100),
-                                          self.med_benefit_high - self.med_benefit_low, 5,
+            med_range = patches.Rectangle((med_benefit_low, 100),
+                                          med_benefit_high - med_benefit_low, 5,
                                           linewidth=1, color='black', alpha=0.5)
             # make upperbound annotation if not indefinite
-            if self.med_benefit_high < self.tmax:
+            if med_benefit_high < self.tmax:
 
-                ax.annotate(str(round(self.med_benefit_high, 1)),
-                            xy=(self.med_benefit_high, 100), xycoords='data',
-                            xytext=(self.med_benefit_high + 1, 90), textcoords='data',
+                ax.annotate(str(round(med_benefit_high, 1)),
+                            xy=(med_benefit_high, 100), xycoords='data',
+                            xytext=(med_benefit_high + 1, 90), textcoords='data',
                             arrowprops=dict(arrowstyle="-", color='k'))
             # add "median" text
-            if self.med_benefit_low > 5:
+            if med_benefit_low > 5:
                 ax.text(0.2, 100, "Median")
             else:
                 ax.text(self.tmax - 5, 100, "Median")
@@ -410,7 +426,7 @@ class SurvivalBenefit:
             return
         
         assert self.save_mode, "Cannot Save Summary Stats: Not in Save Mode"
-        self.benefit_df.to_csv(
+        self.benefit_df.round(2).to_csv(
             f'{self.outdir}/{self.info_str}{postfix}.table.csv')
 
     def save_summary_stats(self, postfix=""):
@@ -422,12 +438,11 @@ class SurvivalBenefit:
             return
         
         assert self.save_mode, "Cannot Save Summary Stats: Not in Save Mode"
-        summary = self.__generate_summary_stats_str()
+        self.stats.to_csv(
+            f'{self.outdir}/{self.info_str}{postfix}.summary_stats.csv',
+            header=False)
 
-        with open(f'{self.outdir}/{self.info_str}{postfix}.summary_stats.tsv', 'w') as f:
-            f.write(summary)
-
-    def __compute_benefit_helper(self, prob_coef, prob_offset=0.0, prob_kind='power'):
+    def __compute_benefit_helper(self, prob_coef, prob_offset=0.0, prob_kind='power') -> pd.DataFrame:
         """Internal helper function for computing the benefit profile.
 
         Args:
@@ -438,13 +453,11 @@ class SurvivalBenefit:
         Returns:
             pd.DataFrame: survival benefit profile dataframe
         """
-        assert self.norm_diff >= 0, "Error: Cannot run algorithm if monotherapy is better than combination."
-
-        rng = np.random.default_rng()
-
-        self.info_str = self.__generate_info_str(
-            self.N, prob_kind, prob_coef, prob_offset)
-
+        assert self.norm_diff >= 0, f"Error: Cannot run algorithm for {self.comb_survival_data.name} if monotherapy is better than combination."
+        self.prob_kind = prob_kind
+        self.prob_coef = prob_coef
+        self.prob_offset = prob_offset
+        
         benefit_df = self.__initialize_benefit_df()
         mono_df = self.mono_survival_data.processed_data
 
@@ -462,7 +475,7 @@ class SurvivalBenefit:
             else:
                 prob = get_prob(pool_size, prob_coef,
                                 prob_offset, kind=prob_kind)
-                chosen_patient = rng.choice(
+                chosen_patient = self.rng.choice(
                     patient_pool, 1, p=prob, replace=False)[0]
 
             t_chosen = mono_df.at[chosen_patient, 'Time']
@@ -484,8 +497,9 @@ class SurvivalBenefit:
         benefit_df.loc[:,
                        'delta_t'] = benefit_df['delta_t'].fillna(0)
         # left-bound delta t
-        benefit_df.loc[benefit_df['new_t']
-                       >= self.tmax, 'left_bound'] = True
+        # This is when the assigned "new_t" is greater than tmax, i.e. in the weibull extrapolated region
+        benefit_df.loc[benefit_df['new_t'] >= self.tmax, 'left_bound'] = True
+        # in this case, lb_delta_t is the difference between tmax and monotherapy survival time
         benefit_df.loc[:, 'lb_delta_t'] = benefit_df['delta_t']
         benefit_df.loc[benefit_df['left_bound'], 'lb_delta_t'] = self.tmax - \
             benefit_df[benefit_df['left_bound']]['Time']
@@ -733,8 +747,12 @@ class SurvivalBenefit:
             float: normalized difference
         """
         # calculate normalized difference between two curves
-        comb_df = self.comb_survival_data.processed_data
-        mono_df = self.mono_survival_data.processed_data
+        comb_df = self.comb_survival_data.processed_data.copy()
+        mono_df = self.mono_survival_data.processed_data.copy()
+
+        # until tmax
+        comb_df.loc[comb_df['Time'] > self.tmax, 'Time'] = self.tmax
+        mono_df.loc[mono_df['Time'] > self.tmax, 'Time'] = self.tmax
         return 100 * (comb_df['Time'] - mono_df['Time']).sum() / self.N
 
     def __get_max_curve(self):
