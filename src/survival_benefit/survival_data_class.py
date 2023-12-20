@@ -99,7 +99,8 @@ class SurvivalData:
     def __pcp_cutoff_time(self, threshold=4):
         # PCP: percentage per patient
         assert self.atrisk is not None, "No atrisk table"
-        f = interpolate(self.original_data, x='Time', y='Survival')
+        dat = self.original_data.drop_duplicates(subset=['Time'], keep='first')
+        f = interpolate(dat, x='Time', y='Survival')
         pcp = f(self.atrisk.index) / self.atrisk
         cutoff = pcp[pcp <= threshold].idxmax()
         return cutoff
