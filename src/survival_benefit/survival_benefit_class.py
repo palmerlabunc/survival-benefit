@@ -42,6 +42,7 @@ class SurvivalBenefit:
             corr (str, optional): correlation metrics (spearmanr or kendalltau). Defaults to 'spearmanr'.
             outdir (str, optional): output directory path. 
                 SurvivalBenefit will create a subdirectory in `outdir` with the given `out_name`. Defaults to '.'.
+                Will be ignored if `save_mode` is False.
             out_name (_type_, optional): output file prefix. If None, it will use combination therapy name. Defaults to None.
             figsize (tuple, optional): figure width and height. Defaults to (6, 4).
             fig_format (str, optional): figure format (png, pdf, or jpeg). Defaults to 'png'.
@@ -99,6 +100,7 @@ class SurvivalBenefit:
                                       'Correlation_pvalue',
                                       'Used_bestmatch_corr',
                                       'Prob_kind', 'Prob_coef', 'Prob_offset',
+                                      'Gini_coefficient',
                                       'Median_benefit_lowbound', 
                                       'Median_benefit_highbound',
                                       'Percent_patients_valid',
@@ -335,7 +337,33 @@ class SurvivalBenefit:
 
         return ax
 
-    def plot_benefit_distribution(self, save=True, postfix="", kind='absolute'):
+    def plot_gini_curve(self, save=True, postfix="") -> plt.axes:
+        """
+        Plot gini curve.
+
+        Args:
+            save (bool, optional): _description_. Defaults to True.
+            postfix (str, optional): _description_. Defaults to "".
+        
+        Returns:
+            plt.axes: axes
+        """
+        df = self.benefit_df[self.benefit_df['valid']]
+        cumsum = df['delta_t'].sort_values().cumsum().values
+        norm_cumsum = 100 * cumsum / cumsum[-1]
+        index = np.linspace(0, 100, len(norm_cumsum))
+
+        fig, ax = plt.subplots(figsize=self.figsize)
+        ax.plot(index, norm_cumsum)
+        ax.set_xlabel('Patients (%)')
+        ax.set_ylabel('Cumulative benefit (%)')
+        ax.set_ylim(0, 100)
+        ax.set_xlim(0, 100)
+        ax.plot([0, 100], [0, 100], linestyle='--', color='black')
+        return ax
+    
+
+    def plot_benefit_distribution(self, save=True, postfix="", kind='absolute') -> plt.axes:
         """Plot benefit distribution.
 
         """
@@ -481,6 +509,7 @@ class SurvivalBenefit:
         benefit_df = self.__initialize_benefit_df()
         mono_df = self.mono_survival_data.processed_data
 
+        # start from the top (survival at 100%, shortest time)
         for i in range(self.N - 1, -1, -1):
             t = self.max_curve.at[i, 'Time']
             surv = self.max_curve.at[i, 'Survival']
@@ -635,6 +664,8 @@ class SurvivalBenefit:
         self.stats['Prob_kind'] = self.prob_kind
         self.stats['Prob_coef'] = self.prob_coef
         self.stats['Prob_offset'] = self.prob_offset
+        self.stats['Gini_coefficient'] = self.compute_gini(
+            valid_subset['delta_t'].values, self.tmax)
         self.stats['Median_benefit_lowbound'] = np.round(med_benefit_low, 2)
         self.stats['Median_benefit_highbound'] = np.round(med_benefit_high, 2)
         self.stats['Percent_patients_valid'] = np.round(percent_valid, 2)
