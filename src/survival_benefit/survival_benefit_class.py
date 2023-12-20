@@ -171,6 +171,26 @@ class SurvivalBenefit:
             atrisk_filepath = f'{tokens[0]}_{experimental_drug}_{tokens[2]}_at-risk.csv'
         return atrisk_filepath
 
+    @staticmethod
+    def compute_gini(values: np.ndarray, tmax: float = None) -> float:
+        """Compute gini coefficient for given value. Values above tmax will be capped at tmax.
+
+        Args:
+            values (np.ndarray): array of all values (time)
+            tmax (float): max value (time)
+
+        Returns:
+            float: gini coefficient
+        """
+        values = np.sort(values)
+        # cap the values at tmax
+        if tmax is not None:
+            values[values > tmax] = tmax
+        n = len(values)
+        gini = (2 * np.sum(np.multiply(np.arange(1, n+1), values)) /
+                (n * np.sum(values))) - (n + 1) / n
+        return np.round(gini, 2)
+    
     def set_tmax(self, tmax: float):
         self.tmax = tmax
         self.mono_survival_data.set_tmax(tmax)
