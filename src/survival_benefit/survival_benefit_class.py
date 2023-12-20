@@ -7,7 +7,7 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import seaborn as sns
-from scipy.stats import kendalltau, spearmanr, rankdata
+from scipy.stats import spearmanr, rankdata
 from survival_benefit.prob_functions import get_prob
 from survival_benefit.survival_data_class import SurvivalData
 
@@ -67,12 +67,10 @@ class SurvivalBenefit:
             mono_data, mono_name)
         self.comb_survival_data = self.__set_survival_data(
             comb_data, comb_name)
-
+        
         # set at risk table
         self.atrisk = self.__set_atrisk_table(atrisk, comb_name)
-
         self.__align_N()
-        self.__add_weibull_tails()
         self.__align_tmax()
         self.__align_round()
         self.max_curve = self.__get_max_curve()
@@ -697,6 +695,7 @@ class SurvivalBenefit:
         # valid options
         # SurvivalData and no name provided
         if isinstance(survival_data, SurvivalData) and name is None:
+            survival_data.add_weibull_tail()
             return survival_data
         # SurvivalData and name provided
         if isinstance(survival_data, SurvivalData) and name is not None:
@@ -747,17 +746,11 @@ class SurvivalBenefit:
         atrisk = atrisk.set_index('time')
 
         # this will automatically apply percentage per patient (PCP) threshold to the survival data
-        self.mono_survival_data.atrisk = atrisk['control']
-        self.comb_survival_data.atrisk = atrisk['treatment']
+        self.mono_survival_data.set_atrisk_table(atrisk['control'])
+        self.comb_survival_data.set_atrisk_table(atrisk['treatment'])
 
         return atrisk
 
-    def __add_weibull_tails(self):
-        """Add weibull tails to the mono and combo survival data if they don't exist
-        """
-        # add weibull tails to the survival data
-        self.mono_survival_data.add_weibull_tail()
-        self.comb_survival_data.add_weibull_tail()
 
     def __align_tmax(self):
         """Align maximum time to be the minimum of the maximum follow-up times of the two curves.
