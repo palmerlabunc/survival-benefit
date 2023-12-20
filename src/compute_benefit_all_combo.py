@@ -92,7 +92,7 @@ def compute_benefit_at_corr_for_all_main_combo(config: dict, n_process: int = 4)
     input_sheet = pd.read_csv(
         config['metadata_sheet'], header=0, index_col=None)
     # create output directory
-    out_dir = config['table_dir'] + 'predictions'
+    out_dir = config['table_dir'] + '/predictions'
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     # prepare arguments
     input_sheet.loc[:, 'Outdir'] = out_dir
@@ -112,7 +112,7 @@ def compute_benefit_at_highest_corr_for_all_main_combo(config: dict, n_process: 
     input_sheet = pd.read_csv(
         config['metadata_sheet'], header=0, index_col=None)
     # create output directory
-    out_dir = config['table_dir'] + 'predictions'
+    out_dir = config['table_dir'] + '/predictions'
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     # prepare arguments
     input_sheet.loc[:, 'Outdir'] = out_dir

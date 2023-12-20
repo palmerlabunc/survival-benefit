@@ -24,7 +24,7 @@ placebo:
 single_agent:
   metadata_sheet:
   raw_dir: data/raw/clinical_trials
-  data_dir: data/cliniacl_trialssingle_agent
+  data_dir: data/cliniacl_trials/single_agent
   fig_dir: figures/single_agent
   table_dir: tables/single_agent
 

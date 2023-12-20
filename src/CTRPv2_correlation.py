@@ -193,6 +193,7 @@ def report_CTRPv2_correlation(data_dir: str, outfile: str):
 
 
 def main():
+    plt.style.use('env/publication.mplstyle')
     config = load_config()
 
     data_dir = config['cell_line']['data_dir']
