@@ -164,8 +164,85 @@ def create_main_combo_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.D
     return result
 
 
-def create_biomarker_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.DataFrame:
-    ...
+def create_biomarker_input_sheet(biomarker_data_sheet: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """
+    Args:
+        biomarker_data_sheet (pd.DataFrame): _description_
+        config (dict): _description_
+
+    Returns:
+        pd.DataFrame: _description_
+    """
+    data = []
+    for idx, row in biomarker_data_sheet.iterrows():
+        
+        if row['Include in Main Figure'] == 0:
+            continue
+
+        additional_info = None
+        if len(idx.split('_')) == 4:  # this is when there is additional information (e.g. RAS WT)
+            additional_info = idx.rsplit('_', 1)[-1]
+        
+        cancer_type = row['Cancer Type']
+        experimental_drug = row['Experimental']
+        control_drug = row['Control']
+        first_author = row['First Author']
+        
+        try:
+            year = int(row['Year'])
+        except ValueError:
+            print(idx)
+        
+        n_combo = int(row['Combination Arm N'])
+        n_control = int(row['Control Arm N'])
+        corr = row['Spearmanr']
+        biomarker = row['Biomarker']
+
+        include_os = (row['Include OS (0/1/NA)'] == 1)
+        has_os_biomarker = pd.notna(row['Biomarker-positive OS HR'])
+        
+        include_surrogate = (row['Include Surrogate (0/1/NA)'] == 1)
+        has_surrogate_biomarker = pd.notna(row['Biomarker-positive Surrogate HR'])
+        
+        if include_os and has_os_biomarker:
+            metric = 'OS'
+            ITT_HR = row[f'{metric} HR']
+            ITT_HR_95low = row[f'{metric} HR 95% CI'].split(',')[0]
+            ITT_HR_95high = row[f'{metric} HR 95% CI'].split(',')[1]
+            biomarker_HR = row[f'Biomarker-positive {metric} HR']
+            biomarker_HR_95low = row[f'Biomarker-positive {metric} HR 95% CI'].split(',')[0]
+            biomarker_HR_95high = row[f'Biomarker-positive {metric} HR 95% CI'].split(',')[1]
+
+            data.append([get_control_prefix(cancer_type, control_drug, first_author, year, 'OS', additional_info=additional_info), 
+                         get_combination_prefix(
+                             cancer_type, experimental_drug, control_drug, first_author, year, 'OS', additional_info=additional_info),
+                         get_label(cancer_type, experimental_drug, control_drug,
+                                   first_author, year, 'OS', additional_info=additional_info),
+                         n_control, n_combo, corr, ITT_HR, ITT_HR_95low, ITT_HR_95high, 
+                         biomarker, biomarker_HR, biomarker_HR_95low, biomarker_HR_95high])
+        
+        if include_surrogate and has_surrogate_biomarker:
+            metric = 'Surrogate'
+            ITT_HR = row[f'{metric} HR']
+            ITT_HR_95low = row[f'{metric} HR 95% CI'].split(',')[0]
+            ITT_HR_95high = row[f'{metric} HR 95% CI'].split(',')[1]
+            biomarker_HR = row[f'Biomarker-positive {metric} HR']
+            biomarker_HR_95low = row[f'Biomarker-positive {metric} HR 95% CI'].split(',')[0]
+            biomarker_HR_95high = row[f'Biomarker-positive {metric} HR 95% CI'].split(',')[1]
+        
+            endpoint = row['Surrogate Metric'].strip()
+            data.append([get_control_prefix(cancer_type, control_drug, first_author, year, endpoint, additional_info=additional_info),
+                         get_combination_prefix(
+                             cancer_type, experimental_drug, control_drug, first_author, year, endpoint, additional_info=additional_info),
+                         get_label(cancer_type, experimental_drug, control_drug, first_author, year, endpoint, additional_info=additional_info),
+                         n_control, n_combo, corr, ITT_HR, ITT_HR_95low, ITT_HR_95high, 
+                         biomarker, biomarker_HR, biomarker_HR_95low, biomarker_HR_95high])
+    
+    columns = ['Control', 'Combination', 'Label', 'N_Control', 'N_Combination', 'Corr',
+               'ITT_HR', 'ITT_HR_95low', 'ITT_HR_95high', 
+               'Biomarker', 'Biomarker_HR', 'Biomarker_HR_95low', 'Biomarker_HR_95high']
+    result = pd.DataFrame(data=data, columns=columns)
+    return result
 
 
 def create_monotherapy_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -183,12 +260,15 @@ def main():
     master_df = master_df.dropna(subset=['Indication'])
     main_df = create_main_combo_input_sheet(master_df, config)
 
-    #biomarker_df = create_biomarker_input_sheet(master_df, config)
+    biomarker_sheet = pd.read_excel('data/clinical_trials/biomarker_data_sheet.xlsx',
+                                    header=0, index_col=0, engine='openpyxl')
+
+    biomarker_df = create_biomarker_input_sheet(biomarker_sheet, config)
     #monotherapy_df = create_monotherapy_input_sheet(master_df, config)
     #placebo_df = create_placebo_input_sheet(master_df, config)
 
     main_df.to_csv(config['main_combo']['metadata_sheet'], index=False)
-    #biomarker_df.to_csv(config['biomarker']['metadata_sheet'], index=False)
+    biomarker_df.to_csv(config['biomarker']['metadata_sheet'], index=False)
     #monotherapy_df.to_csv(config['single_agent']['metadata_sheet'], index=False)
     #placebo_df.to_csv(config['placebo']['metadata_sheet'], index=False)
 
