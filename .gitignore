@@ -11,6 +11,7 @@ publication-figures/
 .DS_Store
 _pycache_/
 .pytest_cache/
+.snakemake/
 *.pyc
 example/test_output/
 src/example/test_output/
