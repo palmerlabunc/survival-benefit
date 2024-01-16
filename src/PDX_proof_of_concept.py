@@ -12,12 +12,15 @@ from typing import Collection
 from survival_benefit.survival_benefit_class import SurvivalBenefit
 from survival_benefit.utils import interpolate
 from PDXE_correlation import get_pdx_corr_data
-from utils import load_config
+from utils import load_config, get_cox_results
 
 # Three main analyses:
 # 1. Is there anatognism in combination threapies?
 # 2. How much difference is there betweeen corr(A, deltaB) and corr(A, B)?
 # 3. Does using corr(A, B) better infer the benefit profile than using high correlation?
+
+config = load_config()['PDX']
+DELTA_T = config['delta_t']
 
 def get_models(dat: pd.DataFrame, tumor: str, drug1: str, drug2: str = None, combo=True) -> np.array:
     if drug2 is None:
@@ -79,26 +82,6 @@ def get_number_of_models_for_all_combo(dat: pd.DataFrame) -> pd.DataFrame:
     
     ndf = pd.DataFrame(tmp, columns=['Tumor Type', 'Combination', 'N'])
     return ndf
-
-
-def get_cox_results(ipd_base: pd.DataFrame, ipd_test: pd.DataFrame) -> tuple:
-    """Perform Cox PH test. IPD should have columns T (Time), E (Event).
-    HR < 1 indicates that test has less hazard (i.e., better than) base.
-
-    Args:
-        ipd_base (pd.DataFrame): IPD of control arm.
-        ipd_test (pd.DataFrame): IPD of test arm. 
-
-    Returns:
-        (float, float, float, float): p, HR, lower 95% CI, upper 95% CI
-    """
-    cph = CoxPHFitter()
-    ipd_base.loc[:, 'Arm'] = 0
-    ipd_test.loc[:, 'Arm'] = 1
-    merged = pd.concat([ipd_base, ipd_test],
-                       axis=0).reset_index(drop=True)
-    cph.fit(merged, duration_col='T', event_col='E')
-    return tuple(cph.summary.loc['Arm', ['p', 'exp(coef)', 'exp(coef) lower 95%', 'exp(coef) upper 95%']])
 
 
 def get_km_curve(event_df: pd.DataFrame, time_col: str, event_col: str) -> pd.DataFrame:
