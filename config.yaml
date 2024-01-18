@@ -1,5 +1,6 @@
 data_master_sheet: "data/data_master_sheet.xlsx"
 
+### Directory Structures
 main_combo:
   metadata_sheet: "data/clinical_trials/main_combo_input_data_sheet.csv"
   raw_dir: data/raw/clinical_trials
@@ -8,7 +9,7 @@ main_combo:
   table_dir: tables/main_combo
 
 biomarker:
-  metadata_sheet:
+  metadata_sheet: data/clinical_trials/biomarker_input_data_sheet.csv
   raw_dir: data/raw/clinical_trials
   data_dir: data/clinical_trials/biomarker
   fig_dir: figures/biomarker
@@ -22,9 +23,9 @@ placebo:
   table_dir: tables/placebo
 
 single_agent:
-  metadata_sheet:
+  metadata_sheet: data/clinical_trials/single_agent_input_data_sheet.csv
   raw_dir: data/raw/clinical_trials
-  data_dir: data/cliniacl_trials/single_agent
+  data_dir: data/clinical_trials/single_agent/approved_trials
   fig_dir: figures/single_agent
   table_dir: tables/single_agent
 
@@ -33,11 +34,40 @@ cell_line:
   data_dir: data/cell_line
   fig_dir: figures/cell_line
   table_dir: tables/cell_line
+  corr_method: spearman
 
 PDX:
   raw_dir: data/raw/PDX
   data_dir: data/PDX
   fig_dir: figures/PDX
   table_dir: tables/PDX
+  delta_t: delta_t
 
+example:
+  data_dir: data/clinical_trials/example
+  fig_dir: figures/example
+  table_dir: tables/example
+  real_example_combo: Colorectal_Bevacizumab-Fluorouracil+Leucovorin+Oxaliplatin_Giantonio2007_PFS
+  real_example_control: Colorectal_Fluorouracil+Leucovorin+Oxaliplatin_Giantonio2007_PFS
+  real_example_experimental: Colorectal_Bevacizumab_Giantonio2007_PFS
+
+### For analyses
+# Seaborn deep
+# deep blue: #4c72b0
+# deep red: #c44e52
+
+# GeoDataViz
+# blue: #009ade
+# red: #ff1f5b
+# green: #00cd6c
+# purple: #af58ba
+
+
+colors:
+  inference: "#af58ba" # purple
+  visual_appearance: "#00cd6c" # green
+  combination_arm: "#e31b23" # red
+  #added_benefit: "#ffaa00" # orange
+  added_benefit: "#ffc325" # yellow
+  control_arm: "#005cab" # blue
 
