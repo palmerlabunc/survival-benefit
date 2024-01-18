@@ -7,11 +7,14 @@ from collections.abc import Iterable
 from processing.precompute_CTRPv2_correlation import import_ctrp_data, precompute_moa_drug_list
 from utils import load_config
 
-_, DRUG_INFO, _, _ = import_ctrp_data()
+CONFIG = load_config()
+
+_, DRUG_INFO, _, _ = import_ctrp_data(CONFIG['cell_line']['data_dir'])
 CHEMO_DRUGS, TARGETED_DRUGS = precompute_moa_drug_list(DRUG_INFO)
 
 
-def get_moa_drug_list(drug_list: Iterable[str], setname: str, chemo_drug_list=None, targeted_drug_list=None) -> np.array:
+def get_moa_drug_list(drug_list: Iterable[str], setname: str, 
+                      chemo_drug_list=None, targeted_drug_list=None) -> np.array:
     """Get drugs with setname MoA
     
     Args:
@@ -28,21 +31,22 @@ def get_moa_drug_list(drug_list: Iterable[str], setname: str, chemo_drug_list=No
 
     if setname == 'chemo':
         if chemo_drug_list is None:
-            _, drug_info, _, _ = import_ctrp_data()
-            drugs_with_moa, _ = precompute_moa_drug_list(drug_info)
+            
+            drugs_with_moa, _ = precompute_moa_drug_list(DRUG_INFO)
         else:
             drugs_with_moa = chemo_drug_list
     elif setname == 'targeted':
-        if targeted_drug_list is None:
-            _, drug_info, _, _ = import_ctrp_data()   
-            _, drugs_with_moa = precompute_moa_drug_list(drug_info)
+        if targeted_drug_list is None:  
+            _, drugs_with_moa = precompute_moa_drug_list(DRUG_INFO)
         else:
             drugs_with_moa = targeted_drug_list
 
     return np.intersect1d(drug_list, drugs_with_moa)
     
 
-def prepare_ctrp_agg_data(data_dir: str, cancer_type='PanCancer', drugA_setname="all", drugB_setname="all") -> np.ndarray:
+def prepare_ctrp_agg_data(data_dir: str, cancer_type='PanCancer', 
+                          drugA_setname="all", drugB_setname="all", 
+                          corr_method='pearson') -> np.ndarray:
     """Returns an array of correlation values of given drug pairs in the given cancer type
 
     Args:
@@ -50,13 +54,14 @@ def prepare_ctrp_agg_data(data_dir: str, cancer_type='PanCancer', drugA_setname=
         cancer_type (str, optional): Cancer type of interest. Defaults to 'PanCancer'.
         drugA_setname (str, optional): 'all', 'chemo', 'targeted', or specific drug. Defaults to "all".
         drugB_setname (str, optional): 'all', 'chemo', or 'targeted'. Defaults to "all".
+        corr_method (str, optional): correlation method {'pearson', 'kendall', 'spearman'}. Defaults to 'pearson'.
 
     Returns:
         np.ndarray: array of correlation values for given pairs
     """
 
     try:
-        df = pd.read_csv(f'{data_dir}/{cancer_type}_all_pairwise_correlation.csv',
+        df = pd.read_csv(f'{data_dir}/{cancer_type}_all_pairwise_{corr_method}_correlation.csv',
                         index_col=0, header=0)
     except FileNotFoundError:
         raise FileNotFoundError(
@@ -116,7 +121,8 @@ def calc_corr_dist_summary_stats(pairs: np.array) -> tuple[float, float, float, 
     return n, avg, std, lower, upper
 
 
-def get_CTRPv2_one_vs_one_correlation(data_dir: str, cancer_type: str, drugA: str, drugB: str) -> float:
+def get_CTRPv2_one_vs_one_correlation(data_dir: str, cancer_type: str, drugA: str, drugB: str, 
+                                      corr_method='pearson') -> float:
     """Get one drug vs. one drug correlation value from precomputed correlation data for CTRPv2
 
     Args:
@@ -124,6 +130,7 @@ def get_CTRPv2_one_vs_one_correlation(data_dir: str, cancer_type: str, drugA: st
         cancer_type (str): Cancer type of interest
         drugA (str): Harmonized Name of drug A (must be in CTRPv2 data)
         drugB (str): Harmonized Name of drug A (must be in CTRPv2 data)
+        corr_method (str, optional): correlation method {'pearson', 'kendall', 'spearman'}. Defaults to 'pearson'.
 
     Raises:
         FileNotFoundError: if correlation for the given cancer type could not be found
@@ -132,7 +139,7 @@ def get_CTRPv2_one_vs_one_correlation(data_dir: str, cancer_type: str, drugA: st
         float: pearsonr correlation coefficient
     """
     try:
-        df = pd.read_csv(f'{data_dir}/{cancer_type}_all_pairwise_correlation.csv',
+        df = pd.read_csv(f'{data_dir}/{cancer_type}_all_pairwise_{corr_method}_correlation.csv',
                         index_col=0, header=0)
     except FileNotFoundError:
         raise FileNotFoundError(
@@ -141,7 +148,7 @@ def get_CTRPv2_one_vs_one_correlation(data_dir: str, cancer_type: str, drugA: st
     return round(df.loc[drugA, drugB], 5)
 
 
-def report_CTRPv2_correlation(data_dir: str, outfile: str):
+def report_CTRPv2_correlation(data_dir: str, outfile: str, corr_method='pearson'):
     cancer_types = ['PanCancer', 'Breast', 'Cervical', 'Colorectal', 'Gastric', 'HeadNeck', 'Leukemia',
                     'Lung', 'Lymphoma', 'Melanoma', 'Myeloma', 'Ovarian', 'Pancreatic', 'Renal']
     moas = ['all', 'targeted', 'chemo']
@@ -173,14 +180,16 @@ def report_CTRPv2_correlation(data_dir: str, outfile: str):
         for cancer in cancer_types:
             for x, y in combinations_with_replacement(moas, 2):
                 try:
-                    pairwise_corr = prepare_ctrp_agg_data(data_dir, cancer, drugA_setname=x, drugB_setname=y)
+                    pairwise_corr = prepare_ctrp_agg_data(data_dir, cancer, drugA_setname=x, drugB_setname=y, 
+                                                          corr_method=corr_method)
                     l, mean, std, lower, upper = calc_corr_dist_summary_stats(pairwise_corr)
                     fout.write(f'{cancer},{x},{y},{l},{mean},{std},{lower},{upper}\n')
                 except FileNotFoundError:
                     pass
         for cancer, x, y in one_vs_sets:
             try:
-                pairwise_corr = prepare_ctrp_agg_data(data_dir, cancer, drugA_setname=x, drugB_setname=y)
+                pairwise_corr = prepare_ctrp_agg_data(data_dir, cancer, drugA_setname=x, drugB_setname=y,
+                                                      corr_method=corr_method)
                 l, mean, std, lower, upper = calc_corr_dist_summary_stats(pairwise_corr)
                 fout.write(f'{cancer},{x},{y},{l},{mean},{std},{lower},{upper}\n')
             except FileNotFoundError:
@@ -188,18 +197,19 @@ def report_CTRPv2_correlation(data_dir: str, outfile: str):
             except AssertionError:
                 print(cancer, x, y)
         for cancer, x, y in one_vs_one:
-            r = get_CTRPv2_one_vs_one_correlation(data_dir, cancer, x, y)
+            r = get_CTRPv2_one_vs_one_correlation(data_dir, cancer, x, y, corr_method=corr_method)
             fout.write(f'{cancer},{x},{y},1,{r},NA,NA,NA\n')
 
 
 def main():
-    plt.style.use('env/publication.mplstyle')
     config = load_config()
 
     data_dir = config['cell_line']['data_dir']
     table_dir = config['cell_line']['table_dir']
-
-    report_CTRPv2_correlation(data_dir, f'{table_dir}/CTRPv2_pairwise_correlation_distributions.csv')
+    corr_method = config['cell_line']['corr_method']
+    report_CTRPv2_correlation(data_dir, 
+                              f'{table_dir}/CTRPv2_pairwise_{corr_method}_correlation_distributions.csv',
+                              corr_method=corr_method)
 
 
 if __name__ == '__main__':
