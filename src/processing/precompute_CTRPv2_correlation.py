@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from processing_utils import load_config
+from .processing_utils import load_config
 
 
 def filter_cancer_cells(ctrp: pd.DataFrame, cell_info: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
@@ -66,7 +66,8 @@ def import_ctrp_data(data_dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.Seri
 
 def precompute_correlation(ctrp: pd.DataFrame, 
                            cancer_type_info: pd.Series, 
-                           cancer_type=None) -> pd.DataFrame:
+                           cancer_type=None,
+                           corr_method='pearson') -> pd.DataFrame:
     """Return correlation matrix dataframe for all drug pairs available for either pan-cancer
     or a certain cancer type. At least min_ccl_cnt number of cell lines are required.
 
@@ -74,6 +75,7 @@ def precompute_correlation(ctrp: pd.DataFrame,
         ctrp (pd.DataFrame): ctrp data from import_ctrp_data
         cancer_type_info (pd.Series): ctrp data from import_ctrp_data
         cancer_type (str, optional): Cancer_Type_HH for cancer type-specfic corrrelation. If None, use pan-cancer. Defaults to None.
+        corr_method (str, optional): correlation method {'pearson', 'kendall', 'spearman'}. Defaults to 'pearson'.
 
     Returns:
         pd.DataFrame or None: correlation matrix dataframe or None if it cannot be calculated
@@ -96,14 +98,14 @@ def precompute_correlation(ctrp: pd.DataFrame,
             cancer_specific_ctrp = ctrp_wide.reindex(ccls)
             # filter for drugs that have at least 20% of celll ines with AUC < 0.8
             cancer_specific_ctrp = cancer_specific_ctrp.loc[:, cancer_specific_ctrp.quantile(0.2) < 0.8]
-            corr_df = cancer_specific_ctrp.corr('pearson', min_periods=min_ccl_cnt)
+            corr_df = cancer_specific_ctrp.corr(corr_method, min_periods=min_ccl_cnt)
         else:
             # don't need to filter for active drugs here because we have already done so when importing ctrp
             print(f"Cannot calculate {cancer_type}-specific correlation")
             return None
 
     else: # pan-cancer
-        corr_df = ctrp_wide.corr('pearson', min_periods=min_ccl_cnt)
+        corr_df = ctrp_wide.corr(corr_method, min_periods=min_ccl_cnt)
 
     # drop drugs where correlation cannot be calculated
     corr_df = corr_df.dropna(axis=0, how='all').dropna(axis=1, how='all').round(5)
@@ -186,18 +188,19 @@ def precompute_moa_drug_list(drug_info: pd.DataFrame) -> tuple[np.array, np.arra
 def main():
     config = load_config()
     data_dir = config['cell_line']['data_dir']
-    cell_info, drug_info, cancer_type_info, ctrp = import_ctrp_data()
+    cell_info, drug_info, cancer_type_info, ctrp = import_ctrp_data(data_dir)
 
-    corr_df = precompute_correlation(ctrp, cancer_type_info)
-    corr_df.to_csv(f'{data_dir}/PanCancer_all_pairwise_correlation.csv')
+    corr_method = config['cell_line']['corr_method']
+    corr_df = precompute_correlation(ctrp, cancer_type_info, corr_method=corr_method)
+    corr_df.to_csv(f'{data_dir}/PanCancer_all_pairwise_{corr_method}_correlation.csv')
 
     cancer_types = cancer_type_info.unique()
     for cancer in cancer_types:
-        corr_df = precompute_correlation(ctrp, cancer_type_info, cancer)
+        corr_df = precompute_correlation(ctrp, cancer_type_info, cancer, corr_method=corr_method)
         if corr_df is not None:
             corr_df.index.name = None
             corr_df.columns.name = None
-            corr_df.to_csv(f'{data_dir}/{cancer}_all_pairwise_correlation.csv')
+            corr_df.to_csv(f'{data_dir}/{cancer}_all_pairwise_{corr_method}_correlation.csv')
 
 
 if __name__ == '__main__':
