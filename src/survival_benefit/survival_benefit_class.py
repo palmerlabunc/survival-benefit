@@ -61,15 +61,23 @@ class SurvivalBenefit:
         if self.outdir.endswith('/'):
             self.outdir = self.outdir[:-1]
 
-        # CAUTION: Do not chnage orders of the functions below
-        # sanity checks for data types for mono_data and comb_data
-        self.mono_survival_data = self.__set_survival_data(
-            mono_data, mono_name)
-        self.comb_survival_data = self.__set_survival_data(
-            comb_data, comb_name)
-        
         # set at risk table
         self.atrisk = self.__set_atrisk_table(atrisk, comb_name)
+
+        # CAUTION: Do not chnage orders of the functions below
+        # sanity checks for data types for mono_data and comb_data
+        if self.atrisk is None:
+            self.mono_survival_data = self.__set_survival_data(
+                mono_data, mono_name)
+            self.comb_survival_data = self.__set_survival_data(
+                comb_data, comb_name)
+
+        else:
+            self.mono_survival_data = self.__set_survival_data(
+                mono_data, mono_name, atrisk=self.atrisk['control'])
+            self.comb_survival_data = self.__set_survival_data(
+                comb_data, comb_name, atrisk=self.atrisk['treatment'])
+
         self.__align_N()
         self.__align_tmax()
         self.__align_round()
@@ -678,12 +686,14 @@ class SurvivalBenefit:
         self.info_str = self.__generate_info_str()
        
     def __set_survival_data(self, survival_data: SurvivalData | pd.DataFrame | None,
-                            name: str | None) -> SurvivalData:
+                            name: str | None,
+                            atrisk: pd.Series = None) -> SurvivalData:
         """Sanity check the survival data types.
 
         Args:
             survival_data (SurvivalData | pd.DataFrame | None): survival data
             name (str | None): name or filepath to the survival data
+            atrisk (pd.Series, optional): at risk table. Defaults to None.
 
         Raises:
             FileNotFoundError: if the survival data file is not found
@@ -699,17 +709,20 @@ class SurvivalBenefit:
             return survival_data
         # SurvivalData and name provided
         if isinstance(survival_data, SurvivalData) and name is not None:
+            survival_data.add_weibull_tail()
             survival_data.set_name(name)
             return survival_data
         # pd.DataFrame and name provided
         if isinstance(survival_data, pd.DataFrame) and name is not None:
-            return SurvivalData(name, survival_data, self.N, weibull_tail=True)
+            return SurvivalData(name, survival_data, self.N, 
+                                atrisk=atrisk, weibull_tail=True)
         # name is a filepath prefix (before .csv)
         if survival_data is None and name is not None:
             try:
                 df = pd.read_csv(f'{name}.csv', index_col=None, header=0)
                 real_name = name.split('/')[-1]
-                return SurvivalData(real_name, df, self.N, weibull_tail=True)
+                return SurvivalData(real_name, df, self.N, 
+                                    atrisk=atrisk, weibull_tail=True)
             except FileNotFoundError:
                 raise FileNotFoundError(f"{name}.csv not found")
         # if does not match any valid options
@@ -718,6 +731,7 @@ class SurvivalBenefit:
 
     def __set_atrisk_table(self, atrisk: pd.DataFrame | None, comb_name: str | None) -> pd.DataFrame | None:
         """Set the atrisk table. If atrisk is None, try to load the atrisk table from the comb_name.
+        This function should be run before setting the SurvivalData.
 
         Args:
             atrisk (pd.DataFrame): atrisk table
@@ -744,10 +758,6 @@ class SurvivalBenefit:
             return None
 
         atrisk = atrisk.set_index('time')
-
-        # this will automatically apply percentage per patient (PCP) threshold to the survival data
-        self.mono_survival_data.set_atrisk_table(atrisk['control'])
-        self.comb_survival_data.set_atrisk_table(atrisk['treatment'])
 
         return atrisk
 
