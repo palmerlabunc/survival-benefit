@@ -49,11 +49,9 @@ class SurvivalData:
         df.loc[df['Time'] <= 0, 'Time'] = 0.00001
 
         # make sure survival is in increasing order
-        if df.iat[-1, 1] < df.iat[0, 1]:
-            #df = df.sort_values(['Survival'], ascending=True).drop_duplicates()
-            df = df.sort_values(['Survival', 'Time'], 
-                                ascending=[True, False]).drop_duplicates()
-            df = df.reset_index(drop=True)
+        df = df.sort_values(['Time', 'Survival'], 
+                            ascending=[False, True]).drop_duplicates()
+        df = df.reset_index(drop=True)
 
         # enforce monotinicity
         df.loc[:, 'Survival'] = np.maximum.accumulate(
@@ -99,6 +97,7 @@ class SurvivalData:
     def __pcp_cutoff_time(self, threshold=4):
         # PCP: percentage per patient
         assert self.atrisk is not None, "No atrisk table"
+        #FIXME make sure this makes the correct interpolation
         dat = self.original_data.drop_duplicates(subset=['Time'], keep='first')
         f = interpolate(dat, x='Time', y='Survival')
         pcp = f(self.atrisk.index) / self.atrisk
