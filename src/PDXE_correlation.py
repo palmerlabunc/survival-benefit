@@ -3,7 +3,7 @@ import numpy as np
 import yaml
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, spearmanr
 from collections.abc import Iterable
 from utils import load_config
 
@@ -44,7 +44,8 @@ def draw_corr_pdx(processed_df):
     plt.style.use('env/publication.mplstyle')
     drug1 = processed_df.columns[0]
     drug2 = processed_df.columns[1]
-    r, p = pearsonr(processed_df[drug1], processed_df[drug2])
+    #r, p = pearsonr(processed_df[drug1], processed_df[drug2])
+    r, p = spearmanr(processed_df[drug1], processed_df[drug2])
     fig, ax = plt.subplots(figsize=(3, 3))
 
     drug1_inactive = (processed_df[drug1] >= 30).sum()
