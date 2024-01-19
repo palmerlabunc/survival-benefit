@@ -1,26 +1,25 @@
-from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import spearmanr, wilcoxon
-from lifelines import KaplanMeierFitter, WeibullFitter, CoxPHFitter
-import warnings
-from typing import Collection
-from survival_benefit.survival_benefit_class import SurvivalBenefit
-from survival_benefit.utils import interpolate
+from lifelines import KaplanMeierFitter
+from typing import Tuple
 from PDXE_correlation import get_pdx_corr_data
 from utils import load_config
 from PDX_proof_of_concept_helper import *
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # Three main analyses:
 # 1. Is there anatognism in combination threapies?
 # 2. How much difference is there betweeen corr(A, deltaB) and corr(A, B)?
 # 3. Does using corr(A, B) better infer the benefit profile than using high correlation?
 
-config = load_config()['PDX']
-DELTA_T = config['delta_t']
-
+config = load_config()
+DELTA_T = config['PDX']['delta_t']
+COLOR_DICT = config['colors']
 
 def prepare_dataframe_for_stripplot(dat: pd.DataFrame) -> pd.DataFrame:
     coxph_combo = coxph_combo_vs_mono(dat)
@@ -83,7 +82,7 @@ def prepare_dataframe_for_stripplot(dat: pd.DataFrame) -> pd.DataFrame:
     return merged
 
 
-def stripplot_added_benefit(data: pd.DataFrame) -> plt.figure:
+def stripplot_added_benefit(data: pd.DataFrame) -> plt.Figure:
     plt.style.use('env/publication.mplstyle')
     data.loc[:, 'label'] = 'Effect of ' + \
         data['target'] + ' in ' + data['Combination']
@@ -95,8 +94,8 @@ def stripplot_added_benefit(data: pd.DataFrame) -> plt.figure:
     return g.fig
 
 
-def prepare_dataframes_for_distplot(dat: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    combo_df = prepare_dataframe_for_stripplot(dat)
+def prepare_dataframes_for_distplot(dat: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    comb_active = prepare_dataframe_for_stripplot(dat)
 
     coxph_mono = coxph_monotherapy_vs_untreated(dat)
     event_df_dict = make_event_dataframe_dict_mono(dat, coxph_mono)
@@ -133,7 +132,7 @@ def prepare_dataframes_for_distplot(dat: pd.DataFrame) -> tuple[pd.DataFrame, pd
 
         mono_merged = pd.concat([mono_merged, tmp], axis=0, ignore_index=True)
 
-    return mono_merged, active, inactive, combo_df
+    return mono_merged, active, inactive, comb_active
 
 
 def distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.DataFrame, mono_active: pd.DataFrame, 
@@ -159,7 +158,7 @@ def distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.DataFrame, mono
 
 
 def cumulative_distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.DataFrame, mono_active: pd.DataFrame,
-                                                            mono_inactive: pd.DataFrame, combo_active: pd.DataFrame) -> plt.figure:
+                                                            mono_inactive: pd.DataFrame, combo_active: pd.DataFrame) -> plt.Figure:
     plt.style.use('env/publication.mplstyle')
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(4, 3))
     sns.despine()
@@ -173,6 +172,7 @@ def cumulative_distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.Data
     sns.ecdfplot(x='added_benefit', data=combo_active,
                 color=sns.color_palette()[3], ax=ax)
     ax.set_xlabel('Added benefit (day)')
+    ax.set_ylabel('Cumulative density')
     ax.axvline(0, linestyle='--', color='k', alpha=0.5)
     ax.legend(labels=['All monotherapy', 'Active monotherapy',
             'Inactive monotherapy', 'Successful combination'])
