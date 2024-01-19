@@ -28,6 +28,7 @@ single_agent:
   data_dir: data/clinical_trials/single_agent/approved_trials
   fig_dir: figures/single_agent
   table_dir: tables/single_agent
+  example_combo: Breast_Pembrolizumab-Chemotherapy_Cortes2020_PFS_CPS10higher
 
 cell_line:
   raw_dir: data/raw/cell_line
@@ -42,6 +43,10 @@ PDX:
   fig_dir: figures/PDX
   table_dir: tables/PDX
   delta_t: delta_t
+  example_tumor: PDAC
+  example_control: BKM120
+  example_experimental: binimetinib
+  example_combo: "BKM120 + binimetinib"
 
 example:
   data_dir: data/clinical_trials/example
