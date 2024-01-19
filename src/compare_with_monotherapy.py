@@ -159,19 +159,22 @@ def plot_compare_monotherapy_added_benefit_one_combo(ax: plt.Axes, monotherapy: 
         target_deltat (np.ndarray[np.float64], optional): delta_t values for experimental correlation. Defaults to None.
         high_deltat (np.ndarray[np.float64], optional): delta_t values for high correlation. Defaults to None.
     """
+
+    ax.plot('Time', 'Survival', data=monotherapy, 
+            linewidth=2, label='Monotherapy', color='k')
+    
     if target_deltat is not None:
         ax.plot(target_deltat, 
                 np.linspace(0, 100, target_deltat.shape[0]),
                 color=color_dict['inference'], 
-                label='Inference')
+                label='Inference',
+                linewidth=1.2)
     if high_deltat is not None:
         ax.plot(high_deltat, 
                 np.linspace(0, 100, high_deltat.shape[0]),
                 color=color_dict['visual_appearance'], 
-                label='Visual Appearance')
-    
-    ax.plot('Time', 'Survival', data=monotherapy, linewidth=2,
-            label='Monotherapy', color='k')
+                label='Visual Appearance',
+                linewidth=1.2)
     
     ax.set_ylim(0, 105)
     ax.set_yticks([0, 50, 100])
@@ -322,7 +325,7 @@ def plot_rmse_lineplot(data: pd.DataFrame) -> plt.Figure:
     ax.set_title(f'Wilcoxon p={p:.2e}')
     ax.set_xlim(-0.5, 1.5)
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(['Inference', 'Visual\nAppearance'])
+    ax.set_xticklabels(['Visual\nAppearance', 'Inference'])
     ax.set_ylabel('Error (%)')
     return fig
 

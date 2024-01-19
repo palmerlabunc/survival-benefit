@@ -137,7 +137,7 @@ def optimal_stratification_scatterplot(dat: pd.DataFrame,
     major = [0.125, 0.25, 0.5, 1]
     
     if subgroup == 'benefitter':
-        ax.set_xlabel('HRbenefitter$')
+        ax.set_xlabel('HRbenefitter')
     else:
         ax.set_xlabel('HRunselected')
     ax.set_ylabel('HR')

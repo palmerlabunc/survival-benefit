@@ -91,7 +91,17 @@ def fit_rho(a, b, rho, rng, ori_rho=None):
     return (x1, x2)
 
 
-def get_weibull_survival_dataframe(a, b, N):
+def get_weibull_survival_dataframe(a: float, b: float, N: int) -> pd.DataFrame:
+    """Generate survival data frame (Time, Survival) with Weibull distribution.
+
+    Args:
+        a (float): shape parameter
+        b (float): scale parameter
+        N (int): number of patients
+
+    Returns:
+        pd.DataFrame: _description_
+    """
     s = np.linspace(100 / N, 100, N)
     t = b * (-np.log(s / 100))**(1 / a)
     data = pd.DataFrame({'Time': t, 'Survival': s - 100 / N}).round(5)
