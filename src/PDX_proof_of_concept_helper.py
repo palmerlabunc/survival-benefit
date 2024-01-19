@@ -13,6 +13,20 @@ DELTA_T = config['delta_t']
 MIN_N = 30
 
 def get_models(dat: pd.DataFrame, tumor: str, drug1: str, drug2: str = None, combo=True) -> np.array:
+    """Returns the list of PDX models that are treated with drug1, drug2 (if specified), 
+    and drug1 + drug2 (if combo is True). The model must be treated with all specified drugs
+    and combination.
+
+    Args:
+        dat (pd.DataFrame): _description_
+        tumor (str): _description_
+        drug1 (str): _description_
+        drug2 (str, optional): _description_. Defaults to None.
+        combo (bool, optional): _description_. Defaults to True.
+
+    Returns:
+        np.array: array of PDX models
+    """
     if drug2 is None:
         return dat[(dat['Treatment'] == drug1) & (dat['Tumor Type'] == tumor)]['Model'].unique()
 
@@ -29,7 +43,8 @@ def get_models(dat: pd.DataFrame, tumor: str, drug1: str, drug2: str = None, com
     return np.intersect1d(models1, models2)
 
 
-def get_event_table(dat: pd.DataFrame, models: Collection, drug: str, strict_censoring=False, tmax=100):
+def get_event_table(dat: pd.DataFrame, models: Collection, drug: str, 
+                    strict_censoring=False, tmax=100) -> pd.DataFrame:
     """ Get event table allow censoring (end of follow-up OR 
     if TimeToDouble == Day_Last and ResponseCategory is not PD). 
     If stict_censoring is True, mark as censored
@@ -60,8 +75,11 @@ def get_number_of_models_for_all_combo(dat: pd.DataFrame) -> pd.DataFrame:
     combo_arr = dat[dat['Treatment type'] == 'combo']['Treatment'].unique()
     combo_list = [s.split(' + ') + [s] for s in combo_arr]
     # remove three-drug combination
-    combo_list.remove(['BYL719', 'cetuximab', 'encorafenib',
-                    'BYL719 + cetuximab + encorafenib'])
+    try:
+        combo_list.remove(['BYL719', 'cetuximab', 'encorafenib',
+                        'BYL719 + cetuximab + encorafenib'])
+    except ValueError:
+        pass
 
     tmp = []
 
