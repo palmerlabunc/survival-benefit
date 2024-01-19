@@ -200,13 +200,14 @@ def plot_compare_monotherapy_added_benefit_each_combo(input_sheet: pd.DataFrame,
     """
     indf = input_sheet
     n = 500
-    nrow, ncol = 5, 5
-    fig, axes = plt.subplots(nrow, ncol, figsize=(ncol*1.5, nrow*1.5), 
-                             constrained_layout=True)
-    axes = axes.flatten()
+
+    n_combos = indf.shape[0]
+    fig, axes = set_figure_size_dim(n_combos, ax_width=1.5, ax_height=1.5, max_cols=5)
+    ax_idx = 0
 
     for i in indf.index:
-        ax = axes[i]
+        ax = axes[ax_idx]
+        ax_idx += 1
 
         name_exp = indf.at[i, 'Experimental']
         name_ab = indf.at[i, 'Combination']
