@@ -44,7 +44,6 @@ def prepare_dataframe_for_stripplot(dat: pd.DataFrame) -> pd.DataFrame:
         df = event_df_combo_dict[(tumor, drug_comb)]
 
         if p1 < 0.05 and hr1 < 1:  # find effect of drug2
-            print(tumor, drug_comb, drug2)
             df = df[df['E_comb'] + df['E_mono1'] > 0]  # exclude both censored
             # if event only observed in comb AND comb < mono => definately comb < mono
             # if event only observed in mono AND comb > mono => definately comb > mono
@@ -62,7 +61,6 @@ def prepare_dataframe_for_stripplot(dat: pd.DataFrame) -> pd.DataFrame:
             merged = pd.concat([merged, tmp], axis=0, ignore_index=True)
 
         if p2 < 0.05 and hr2 < 1:  # find effect of drug1
-            print(tumor, drug_comb, drug1)
             df = df[df['E_comb'] + df['E_mono2'] > 0]  # exclude both censored
             # if event only observed in comb AND comb < mono => definately comb < mono
             # if event only observed in mono AND comb > mono => definately comb > mono
@@ -83,7 +81,6 @@ def prepare_dataframe_for_stripplot(dat: pd.DataFrame) -> pd.DataFrame:
 
 
 def stripplot_added_benefit(data: pd.DataFrame) -> plt.Figure:
-    plt.style.use('env/publication.mplstyle')
     data.loc[:, 'label'] = 'Effect of ' + \
         data['target'] + ' in ' + data['Combination']
     g = sns.catplot(y="label", x="added_benefit", hue="event_observed",
@@ -159,7 +156,6 @@ def distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.DataFrame, mono
 
 def cumulative_distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.DataFrame, mono_active: pd.DataFrame,
                                                             mono_inactive: pd.DataFrame, combo_active: pd.DataFrame) -> plt.Figure:
-    plt.style.use('env/publication.mplstyle')
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(4, 3))
     sns.despine()
 
@@ -250,23 +246,19 @@ def pairplot_corr_differences(data: pd.DataFrame) -> plt.figure:
     return g.fig
 
 
-def compute_rmse_in_survival(true_benefit: pd.Series, inferred_benefit: pd.DataFrame) -> np.array:
-    delta_t = inferred_benefit['delta_t'].sort_values(ascending=True).values
-    inferred_survival = np.linspace(0, 100, delta_t.size)
-    inferred = pd.DataFrame({'survival': inferred_survival, 'delta_t': delta_t})
-    f_inferred = interpolate(inferred, x='delta_t', y='survival')
+    inferred_benefit_km = KaplanMeierFitter()
+    inferred_benefit_km.fit(inferred_deltat)
     
-    true_delta_t = true_benefit.sort_values(ascending=True)
-    true_survival = np.linspace(0, 100, true_delta_t.size)
-    true = pd.DataFrame({'survival': true_survival, 'delta_t': true_delta_t})
-    f_true = interpolate(true, x='delta_t', y='survival')
+    if tmax is None:
+        tmax = true_benefit_event_df['T_benefit'].max()
+    ts = np.linspace(0, tmax, 500)
 
-    t = np.linspace(0, 100, 100)
+    ax.plot(ts, 100 * true_benefit_km.survival_function_at_times(ts),
     
-    return np.sqrt(np.mean(np.square(f_true(t) - f_inferred(t))))
+    if visual_deltat is not None:
 
 
-def find_closest_benefit_to_corr(sb: SurvivalBenefit, r: float) -> SurvivalBenefit:
+    return ax
     sb.compute_benefit(prob_coef=50)
     highest_corr = sb.corr_rho
     if r > highest_corr:
@@ -279,18 +271,16 @@ def find_closest_benefit_to_corr(sb: SurvivalBenefit, r: float) -> SurvivalBenef
     return sb
 
 
-def compute_benefits_helper(event_df: pd.DataFrame, drug1_name: str, drug2_name: str, 
-                            effect_drug_idx: int, r: float) -> tuple[float, pd.DataFrame, float, pd.DataFrame]:
-    km_comb = get_km_curve(event_df, 'T_comb', 'E_comb')
-    if effect_drug_idx == 1:
-        km_mono = get_km_curve(event_df, 'T_mono2', 'E_mono2')
-        sb = SurvivalBenefit(km_mono, km_comb, 
-                             drug1_name, drug1_name + '-' +  drug2_name,  
-                             save_mode=False)
-    elif effect_drug_idx == 2:
-        km_mono = get_km_curve(event_df, 'T_mono1', 'E_mono1')
-        sb = SurvivalBenefit(km_mono, km_comb, 
-                             drug2_name, drug2_name + '-' +  drug1_name,  
+def correlation_benefit_comparison(dat: pd.DataFrame) -> tuple[pd.DataFrame, plt.Figure]:
+    result_list = []
+    coxph_df = coxph_combo_vs_mono(dat, strict_censoring=False)
+    event_df_dict = make_event_dataframe_dict_combo(dat, coxph_df, strict_censoring=False)
+    info = dat[['Model', 'Tumor Type', 'BRAF_mut', 'RAS_mut']].drop_duplicates().set_index('Model')
+
+    n_combos = coxph_df.shape[0]
+    nrow = int(n_combos/4)
+    if nrow > 0:
+        ncol = 4
                              save_mode=False)
     else:
         print("wrong effect_drug_idx")

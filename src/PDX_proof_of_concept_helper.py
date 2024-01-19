@@ -1,9 +1,15 @@
 import pandas as pd
 import numpy as np
 from lifelines import KaplanMeierFitter
-from typing import Collection
+from typing import Collection, Tuple
 from utils import get_cox_results
+from survival_benefit.survival_benefit_class import SurvivalBenefit
+from survival_benefit.utils import interpolate
+from utils import load_config
+from PDX_proof_of_concept_helper import *
 
+config = load_config()['PDX']
+DELTA_T = config['delta_t']
 MIN_N = 30
 
 def get_models(dat: pd.DataFrame, tumor: str, drug1: str, drug2: str = None, combo=True) -> np.array:
@@ -205,3 +211,102 @@ def coxph_combo_vs_mono(dat: pd.DataFrame, strict_censoring=False) -> pd.DataFra
 
     return coxph_combo
 
+
+def compute_benefits_helper(event_df: pd.DataFrame, 
+                            drug1_name: str, drug2_name: str, 
+                            control_drug_idx: int, 
+                            r: float,
+                            tmax: float = 100) -> Tuple[float, pd.DataFrame]:
+    
+    assert control_drug_idx in [1, 2], "control_drug_idx must be 1 or 2"
+    km_comb = get_km_curve(event_df, 'T_comb', 'E_comb')
+    
+    km_mono = get_km_curve(event_df, 
+                           f'T_mono{control_drug_idx}', 
+                           f'E_mono{control_drug_idx}')
+    
+    if control_drug_idx == 1:
+        ctrl_drug_name = drug1_name
+        combo_name = drug2_name + '-' + drug1_name
+    
+    else:
+        ctrl_drug_name = drug2_name
+        combo_name = drug1_name + '-' + drug2_name
+    
+    sb = SurvivalBenefit(km_mono, km_comb,
+                         ctrl_drug_name, combo_name,
+                         save_mode=False)
+
+    sb.set_tmax(tmax)
+
+    # use correlation from bestAvgResponse
+    sb.compute_benefit_at_corr(r, use_bestmatch=True)
+    actual_corr = sb.corr_rho_actual
+    actual_corr_benefit = sb.benefit_df.copy()
+
+    return (actual_corr, actual_corr_benefit)
+
+
+def compute_rmse_in_survival(true_benefit: pd.Series, inferred_benefit: pd.DataFrame) -> np.array:
+    delta_t = inferred_benefit[DELTA_T].sort_values(ascending=True).values
+    inferred_survival = np.linspace(0, 100, delta_t.size)
+    inferred = pd.DataFrame({'survival': inferred_survival, DELTA_T: delta_t})
+    f_inferred = interpolate(inferred, x=DELTA_T, y='survival')
+    
+    true_delta_t = true_benefit.sort_values(ascending=True)
+    true_survival = np.linspace(0, 100, true_delta_t.size)
+    true = pd.DataFrame({'survival': true_survival, DELTA_T: true_delta_t})
+    f_true = interpolate(true, x=DELTA_T, y='survival')
+
+    t = np.linspace(0, 100, 100)
+    
+    return np.sqrt(np.mean(np.square(f_true(t) - f_inferred(t))))
+
+
+def compute_rmse_in_time(true_benefit: pd.Series, inferred_benefit: pd.DataFrame) -> np.array:
+    delta_t = inferred_benefit[DELTA_T].sort_values(ascending=False).values
+    inferred_survival = np.linspace(0, 100, delta_t.size)
+    inferred = pd.DataFrame({'Survival': inferred_survival, 'Time': delta_t})
+    f = interpolate(inferred, x='Survival', y='Time')
+    
+    true_benefit[true_benefit < 0] = 0  # disregard negative values
+    true_benefit = np.sort(true_benefit)[::-1] # descending
+    surv_idx = np.linspace(0, 100 - 100 / true_benefit.size, true_benefit.size)
+    
+    return np.sqrt(np.mean(np.square(f(surv_idx) - true_benefit)))
+
+
+def compute_rmse_in_survival_km(true_benefit_event_df: pd.DataFrame, inferred_deltat: pd.Series, 
+                                tmax: float = None) -> float:
+    inferred_deltat.loc[inferred_deltat < 0] = 0  # disregard negative values
+
+    true_benefit_km = KaplanMeierFitter()
+    true_benefit_km.fit(true_benefit_event_df['T_benefit'], 
+                        true_benefit_event_df['E_benefit'])
+    
+    inferred_benefit_km = KaplanMeierFitter()
+    inferred_benefit_km.fit(inferred_deltat)
+
+    if tmax is None:
+        tmax = true_benefit_event_df['T_benefit'].max()
+    
+    ts = np.linspace(0, tmax, 1000)
+
+    # convert to 0 - 100 % scale
+    true_benefit_surv = 100 * true_benefit_km.survival_function_at_times(ts)
+    inferre_benefit_surv = 100 * inferred_benefit_km.survival_function_at_times(ts)
+
+    return np.sqrt(np.mean((true_benefit_surv - inferre_benefit_surv)**2))
+
+
+def added_benefit_event_table(event_df: pd.DataFrame, control_drug_idx: int) -> pd.DataFrame:
+    df = event_df.copy()
+    # only use models where the control drug event is observed
+    df = df[df[f'E_mono{control_drug_idx}'] == 1]
+    df.loc[:, 'T_mono'] = df[f'T_mono{control_drug_idx}']
+    df.loc[:, 'T_benefit'] = df['T_comb'] - df[f'T_mono{control_drug_idx}']
+    # if the benefit is negative, set it to 0
+    df.loc[df['T_benefit'] < 0, 'T_benefit'] = 0
+    df.loc[:, 'E_benefit'] = df['E_comb']
+
+    return df[['T_benefit', 'E_benefit']]
