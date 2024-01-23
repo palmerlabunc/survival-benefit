@@ -11,6 +11,12 @@ from scipy.stats import spearmanr, rankdata
 from survival_benefit.prob_functions import get_prob
 from survival_benefit.survival_data_class import SurvivalData
 
+COLORS = {'mono': '#00cd6c', 
+          'comb': '#af58ba',
+          'added_benefit': "#ffaa00",
+          'low_bound': "#f28522"}
+
+
 class SurvivalBenefit:
     """This version has the row approach and uses
 
@@ -30,7 +36,7 @@ class SurvivalBenefit:
         3. mono_/comb_name as a filepath prefix (before .csv)
 
         Args:
-            mono_data (pd.DataFrame | SurvivalData, optional): monotherapy data. Defaults to None.
+            mono_data (pd.DataFrame | SurvivalData, optional): monotherapy (control arm) data. Defaults to None.
             comb_data (pd.DataFrame | SurvivalData, optional): combination therapy data. Defaults to None.
             mono_name (str, optional): monotherapy name. 
                 If a file path before the exension (.csv) is given, the csv file will be read. Defaults to None.
@@ -250,9 +256,10 @@ class SurvivalBenefit:
                 warnings.warn(
                     f"Using highest compatible correlation {self.corr_rho_actual} instead of given correlation {self.corr_rho_target}.")
 
-    def plot_compute_benefit_sanity_check(self, save=True, postfix="") -> plt.axes:
+    def plot_compute_benefit_sanity_check(self, save=True, postfix="") -> (plt.Figure, plt.Axes):
         """Sanity check plot of monotherapy, updated, and combination arms.
         """
+        plt.style.use('survival_benefit.styles.publication')
         if self.benefit_df is None:
             warnings.warn("Nothing to plot. Run compute_benefit first.")
             return
@@ -275,18 +282,18 @@ class SurvivalBenefit:
         sns.set_style('ticks')
         fig, ax = plt.subplots(figsize=self.figsize)
         ax.plot(mono_df.loc[mono_min_surv_idx:, 'Time'], mono_df.loc[mono_min_surv_idx:, 'Survival'],
-                label='mono', color='green')
+                label='mono', color=COLORS['mono'])
         ax.plot(comb_df.loc[comb_min_surv_idx:, 'Time'], comb_df.loc[comb_min_surv_idx:, 'Survival'],
-                label="comb", color='purple')
+                label="comb", color=COLORS['comb'])
         tmp = self.benefit_df.sort_values('new_surv')
         ax.plot(tmp['new_t'], tmp['new_surv'],
-                color='orange', label="reconstructed")
+                color=COLORS['added_benefit'], label="reconstructed")
         # defined region
         ax.fill_betweenx(np.arange(comb_min_surv_idx, self.N, 1) / self.N * 100,
                          mono_df.loc[comb_min_surv_idx:, 'Time'],
                          self.max_curve.loc[comb_min_surv_idx:, 'Time'],
                          color='orange', alpha=0.3)
-        # left-bound region
+        # low-bound region
         ax.fill_betweenx(left_bound_range,
                          mono_df.loc[mono_min_surv_idx:comb_min_surv_idx - 1, 'Time'],
                          np.repeat(self.tmax + 1, left_bound_range.size),
@@ -297,20 +304,21 @@ class SurvivalBenefit:
         ax.set_xlim(0, self.tmax + 1)
         ax.set_ylim(-1, 105)
         ax.set_xlabel('Time (months)')
-        ax.set_ylabel('Probability (%)')
+        ax.set_ylabel('Patients (%)')
         ax.legend()
         sns.despine()
         if save and self.save_mode:
             fig.savefig(
-                f'{self.outdir}/{self.info_str}{postfix}.sanity_check.{self.fig_format}', bbox_inches='tight')
-            plt.close()
+                f'{self.outdir}/{self.info_str}{postfix}.sanity_check.{self.fig_format}', 
+                bbox_inches='tight')
 
-        return ax
+        return fig, ax
 
-    def plot_t_delta_t_corr(self, save=True, postfix=""):
+    def plot_t_delta_t_corr(self, save=True, postfix="") -> (plt.Figure, plt.Axes):
         """Plot survival time for A against added benefit from B.
 
         """
+        plt.style.use('survival_benefit.styles.publication')
         if self.benefit_df is None:
             warnings.warn("Nothing to plot. Run compute_benefit first.")
             return
@@ -333,17 +341,16 @@ class SurvivalBenefit:
         sns.despine()
         ax.set_xlim(0, self.N + 10)
         ax.set_ylim(0, self.N + 10)
-        ax.legend(title='left-bound', bbox_to_anchor=(1.05, 0.5))
+        ax.legend(title='low-bound', bbox_to_anchor=(1.05, 0.5))
         ax.set_xlabel('Rank by monotherapy survival time')
         ax.set_ylabel('Rank by delta_t survival time')
         if save and self.save_mode:
-            fig.savefig(
-                f'{self.outdir}/{self.info_str}{postfix}.corr.{self.fig_format}', bbox_inches='tight')
-            plt.close()
+            fig.savefig(f'{self.outdir}/{self.info_str}{postfix}.corr.{self.fig_format}', 
+                        bbox_inches='tight')
 
-        return ax
+        return fig, ax
 
-    def plot_gini_curve(self, save=True, postfix="") -> plt.axes:
+    def plot_gini_curve(self, save=True, postfix="") -> (plt.Figure, plt.Axes):
         """
         Plot gini curve.
 
@@ -352,8 +359,10 @@ class SurvivalBenefit:
             postfix (str, optional): _description_. Defaults to "".
         
         Returns:
-            plt.axes: axes
+            plt.Figure:
+            plt.Axes:
         """
+        plt.style.use('survival_benefit.styles.publication')
         df = self.benefit_df[self.benefit_df['valid']]
         cumsum = df['delta_t'].sort_values().cumsum().values
         norm_cumsum = 100 * cumsum / cumsum[-1]
@@ -368,30 +377,87 @@ class SurvivalBenefit:
         ax.plot([0, 100], [0, 100], linestyle='--', color='black')
         return ax
     
-
-    def plot_benefit_distribution(self, save=True, postfix="", kind='absolute') -> plt.axes:
-        """Plot benefit distribution.
-
-        """
+    def plot_benefit_distribution(self, save=True, postfix="", kind='absolute', simple=False) -> (plt.Figure, plt.Axes):
+        plt.style.use('survival_benefit.styles.publication')
         if self.benefit_df is None:
             warnings.warn("Nothing to plot. Run compute_benefit first.")
             return
         
+        if kind not in ['absolute', 'ratio']:
+            raise ValueError("ERROR: Wrong kind parameter. It should be either 'absolute' or 'ratio'")
+        
+        
+        if simple:
+            return self.__plot_benefit_distribution_simple(save, postfix, kind)
+        else:
+            return self.__plot_benefit_distribution_extensive(save, postfix, kind)
+        
+    def __plot_benefit_distribution_simple(self, save=True, postfix="", kind='absolute') -> (plt.Figure, plt.Axes):
+        """Plot simple version of the benefit distribution. Only plots in the valid region (as in 0-100% survival)
+        and the (extrapolated) benefit.
+
+        Args:
+            save (bool, optional): _description_. Defaults to True.
+            postfix (str, optional): _description_. Defaults to "".
+            kind (str, optional): _description_. Defaults to 'absolute'.
+
+        Returns:
+            plt.Figure:
+            plt.Axes:
+        """
+        valid_subset = self.benefit_df[self.benefit_df['valid']]
+        stepsize = 100 / valid_subset.shape[0]
+        if kind == 'absolute':
+            delta = valid_subset['delta_t']  # defined
+        elif kind == 'ratio':
+            delta = 100 * valid_subset['delta_t'] / \
+                valid_subset['Time']  # defined
+        
+        fig, ax = plt.subplots(1, 1, figsize=self.figsize)
+
+        delta_df = pd.DataFrame({'Survival': np.linspace(0, 100, valid_subset.shape[0]),
+                                 'Time': np.sort(delta.values)[::-1]})
+
+        ax.plot(delta_df['Time'], delta_df['Survival'],
+                color=COLORS['added_benefit'])
+        
+        ax.fill_betweenx(delta_df['Survival'],
+                         np.zeros(delta_df.shape[0]), delta_df['Time'],
+                         color=COLORS['added_benefit'], alpha=0.3)
+
+        ax.set_ylabel('Patients (%)')
+        ax.set_ylim(-1, 105)
+
+        if kind == 'absolute':
+            ax.set_xlabel('Added benefit from B (months)')
+            ax.set_xlim(0, self.tmax)
+
+        elif kind == 'ratio':
+            ax.set_xlabel('Fold increase in time (%)')
+            ax.set_xlim(0, 500)
+
+        if save and self.save_mode:
+            fig.savefig(f'{self.outdir}/{self.info_str}{postfix}.distribution_simple_{kind}.{self.fig_format}', 
+                        bbox_inches='tight')
+        
+        return fig, ax
+
+    def __plot_benefit_distribution_extensive(self, save=True, postfix="", kind='absolute') -> (plt.Figure, plt.Axes):
+        """Plot benefit distribution.
+
+        """
         # set up data
-        sns.set_style('ticks')
         stepsize = 100 / self.N
         valid_subset = self.benefit_df[self.benefit_df['valid']]
         if kind == 'absolute':
-            delta1 = valid_subset['lb_delta_t']  # left-bound
+            delta1 = valid_subset['lb_delta_t']  # low-bound
             delta2 = valid_subset['delta_t']  # defined
         elif kind == 'ratio':
             delta1 = 100 * valid_subset['lb_delta_t'] / \
-                valid_subset['Time']  # left-bound
+                valid_subset['Time']  # low-bound
             delta2 = 100 * valid_subset['delta_t'] / \
                 valid_subset['Time']  # defined
-        else:
-            print("ERROR: Wrong kind parameter", file=sys.stderr)
-            return
+
         unknown = 100 * (self.N - self.benefit_df['valid'].sum()) / self.N
         delta_df1 = pd.DataFrame({'Survival': np.linspace(unknown, 100 - stepsize, delta1.size),
                                   'Time': np.sort(delta1.values)[::-1]})
@@ -404,20 +470,20 @@ class SurvivalBenefit:
         # plot
         fig, ax = plt.subplots(1, 1, figsize=self.figsize)
 
-        # left-bound
+        # low-bound
         ax.plot(delta_df1['Time'], delta_df1['Survival'],
-                color='orange',
-                label="left-bound benefit")
+                color=COLORS['low_bound'],
+                label="low-bound benefit")
         ax.fill_betweenx(delta_df1['Survival'],
                          np.zeros(delta_df1.shape[0]), delta_df1['Time'],
-                         color='orange', alpha=0.5)
+                         color=COLORS['low_bound'], alpha=0.5)
         # defined
         ax.plot(delta_df2['Time'], delta_df2['Survival'],
-                color='royalblue',
+                color=COLORS['added_benefit'],
                 label="extrapolated benefit")
         ax.fill_betweenx(delta_df2['Survival'],
                          delta_df1['Time'], delta_df2['Time'],
-                         color='royalblue', alpha=0.3)
+                         color=COLORS['added_benefit'], alpha=0.3)
 
         # line dividng unknown and uncertain
         ax.axhline(unknown, linestyle='--', c='k')
@@ -460,16 +526,17 @@ class SurvivalBenefit:
             ax.set_xlabel('Fold increase in time (%)')
             ax.set_xlim(0, 500)
 
-        ax.set_ylabel('Probability (%)')
+        ax.set_ylabel('Patients (%)')
         ax.set_ylim(-1, 105)
         ax.legend(loc='lower left', bbox_to_anchor=(0, 1.05), ncol=1,
                   borderaxespad=0, frameon=True)
         sns.despine()
         if save and self.save_mode:
             fig.savefig(
-                f'{self.outdir}/{self.info_str}{postfix}.distribution_{kind}.{self.fig_format}', bbox_inches='tight')
-            plt.close()
-        return ax
+                f'{self.outdir}/{self.info_str}{postfix}.distribution_{kind}.{self.fig_format}', 
+                bbox_inches='tight')
+        
+        return fig, ax
 
     def save_benefit_df(self, postfix=""):
         """Save benefit_df dataframe to csv file.
@@ -551,7 +618,7 @@ class SurvivalBenefit:
             benefit_df['Time']
         benefit_df.loc[:,
                        'delta_t'] = benefit_df['delta_t'].fillna(0)
-        # left-bound delta t
+        # low-bound delta t
         # This is when the assigned "new_t" is greater than tmax, i.e. in the weibull extrapolated region
         benefit_df.loc[benefit_df['new_t'] >= self.tmax, 'left_bound'] = True
         # in this case, lb_delta_t is the difference between tmax and monotherapy survival time
@@ -649,7 +716,7 @@ class SurvivalBenefit:
         percent_1mo_lb = stepsize * sum(valid_subset['lb_delta_t'] >= 1)
         percent_valid = stepsize * valid_subset.shape[0]
 
-        # median benefit among patients with >= 1 month left-bound benefit
+        # median benefit among patients with >= 1 month low-bound benefit
         med_benefit_low = valid_subset[valid_subset['lb_delta_t'] >= 1]['lb_delta_t'].median()
 
         # median benefit among patients with >= 1 month benefit (weibull extrapolated)
