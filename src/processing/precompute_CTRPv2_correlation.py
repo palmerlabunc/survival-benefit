@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
-from .processing_utils import load_config
+from processing.processing_utils import load_config
 
 
-def filter_cancer_cells(ctrp: pd.DataFrame, cell_info: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+def filter_cancer_cells(ctrp: pd.DataFrame, 
+                        cell_info: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     non_cancer = cell_info[cell_info['Cancer_Type_HH'] == 'Non-cancer'].index
     cell_info = cell_info.drop(non_cancer)
     cancer_type_info = cell_info['Cancer_Type_HH'].squeeze()
@@ -12,7 +13,8 @@ def filter_cancer_cells(ctrp: pd.DataFrame, cell_info: pd.DataFrame) -> tuple[pd
     return ctrp, cell_info, cancer_type_info
 
 
-def filter_active_and_clinical_drugs(ctrp: pd.DataFrame, drug_info: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def filter_active_and_clinical_drugs(ctrp: pd.DataFrame, 
+                                     drug_info: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     # Keep only active drugs
     grouped = ctrp.groupby('Harmonized_Compound_Name')

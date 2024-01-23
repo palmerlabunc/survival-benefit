@@ -35,3 +35,20 @@ savefig.bbox:       tight    # {tight, standard}
 savefig.pad_inches:  0.05       # padding to be used, when bbox is set to 'tight'
 savefig.transparent: True     # whether figures are saved with a transparent
                                 # background by default
+
+### LAYOUT
+## Figure layout
+#figure.autolayout: False  # When True, automatically adjust subplot
+                           # parameters to make the plot fit the figure
+                           # using `tight_layout`
+#figure.constrained_layout.use: False  # When True, automatically make plot
+                                       # elements fit on the figure. (Not
+                                       # compatible with `autolayout`, above).
+## Padding (in inches) around axes; defaults to 3/72 inches, i.e. 3 points.
+#figure.constrained_layout.h_pad:  0.04167
+#figure.constrained_layout.w_pad:  0.04167
+## Spacing between subplots, relative to the subplot sizes.  Much smaller than for
+## tight_layout (figure.subplot.hspace, figure.subplot.wspace) as constrained_layout
+## already takes surrounding texts (titles, labels, # ticklabels) into account.
+#figure.constrained_layout.hspace: 0.02
+#figure.constrained_layout.wspace: 0.02

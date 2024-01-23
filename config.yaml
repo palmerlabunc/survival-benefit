@@ -52,9 +52,12 @@ example:
   data_dir: data/clinical_trials/example
   fig_dir: figures/example
   table_dir: tables/example
-  real_example_combo: Colorectal_Bevacizumab-Fluorouracil+Leucovorin+Oxaliplatin_Giantonio2007_PFS
-  real_example_control: Colorectal_Fluorouracil+Leucovorin+Oxaliplatin_Giantonio2007_PFS
-  real_example_experimental: Colorectal_Bevacizumab_Giantonio2007_PFS
+  #real_example_combo: Colorectal_Bevacizumab-Fluorouracil+Leucovorin+Oxaliplatin_Giantonio2007_PFS
+  #real_example_control: Colorectal_Fluorouracil+Leucovorin+Oxaliplatin_Giantonio2007_PFS
+  #real_example_experimental: Colorectal_Bevacizumab_Giantonio2007_PFS
+  real_example_combo: Breast_Lapatinib-Capecitabine_Kaufman2008_PFS
+  real_example_control: Breast_Capecitabine_Kaufman2008_PFS
+  real_example_experimental: Breast_Lapatinib_Kaufman2009_PFS
 
 ### For analyses
 # Seaborn deep

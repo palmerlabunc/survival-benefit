@@ -19,7 +19,7 @@ rule all:
         # illustrative examples
         f"{config['example']['fig_dir']}/two_arms.pdf",
         # real example
-        f"{config['example']['fig_dir']}/Breast_Pembrolizumab-Chemotherapy_Cortes2020_PFS.two_arms.pdf",
+        f"{config['example']['fig_dir']}/{config['example']['real_example_combo']}.two_arms.pdf",
         # main combo analysis
         f"{config['main_combo']['fig_dir']}/Surrogate.gini_compare_exp_and_high_kdeplot.pdf"
 
@@ -60,16 +60,18 @@ rule compute_correlation:
         f"{CONFIG_CELL['data_dir']}/PanCancer_all_pairwise_{CONFIG_CELL['corr_method']}_correlation.csv",
         f"{config['PDX']['data_dir']}/PDXE_model_info.csv",
         f"{config['PDX']['data_dir']}/PDXE_drug_response.csv",
-        "src/compute_CTRPv2_correlation.py",
-        "src/compute_PDXE_correlation.py"
+        "src/CTRPv2_correlation.py",
+        "src/PDXE_correlation.py"
     output:
         f"{CONFIG_CELL['table_dir']}/CTRPv2_pairwise_{CONFIG_CELL['corr_method']}_correlation_distributions.csv",
         f"{config['PDX']['fig_dir']}/CM-BRAFmut_binimetinib_encorafenib.pdf",
-        f"{config['PDX']['fig_dir']}/CRC-RASwt_cetuximab_5FU.pdf"
+        f"{config['PDX']['fig_dir']}/CRC-RASwt_cetuximab_5FU.pdf",
+        f"{CONFIG_CELL['fig_dir']}/Colorectal_chemo_vs_targeted_corr_dist.pdf",
+        f"{CONFIG_CELL['fig_dir']}/Breast_Lapatinib_vs_5-Fluorouracil.pdf"
         # should have cancer-type specific all pairwise correlation
     shell:
-        "python src/compute_CTRPv2_correlation.py; "
-        "python src/compute_PDXE_correlation.py"
+        "python src/CTRPv2_correlation.py; "
+        "python src/PDXE_correlation.py"
 
 
 rule create_input_sheets:
@@ -222,7 +224,7 @@ rule real_example:
         "env/publication.mplstyle"
     output:
         directory(f"{config['example']['table_dir']}/predictions/"),
-        f"{config['example']['fig_dir']}/Breast_Pembrolizumab-Chemotherapy_Cortes2020_PFS.two_arms.pdf",
-        f"{config['example']['fig_dir']}/Breast_Pembrolizumab_Winer2021_PFS_ITT.pdf"
+        f"{config['example']['fig_dir']}/{config['example']['real_example_combo']}.two_arms.pdf",
+        f"{config['example']['fig_dir']}/{config['example']['real_example_experimental']}.pdf"
     shell:
         "python src/real_combo_example.py"

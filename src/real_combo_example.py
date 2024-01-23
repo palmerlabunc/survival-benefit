@@ -32,7 +32,7 @@ def plot_two_arms(sb: SurvivalBenefit, color_dict: dict) -> plt.Figure:
     ax.legend(loc='lower left', frameon=False, bbox_to_anchor=(1.05, 0.0))
     ax.set_xlim(0, sb.tmax-1)
     ax.set_ylim(0, 105)
-    ax.set_xticks([0, 12, 24])
+    ax.set_xticks([0, 6, 12, 24])
     ax.set_yticks([0, 50, 100])
     ax.set_xlabel('Time (months)')
     ax.set_ylabel('Patients (%)')
@@ -51,9 +51,9 @@ def plot_experimental_arm(filepath) -> plt.Figure:
     ax.plot('Time', 'Survival', 
             data=data,
             color='darkorange')
-    ax.set_xlim(0, 18)
+    ax.set_xlim(0, 12)
     ax.set_ylim(0, 105)
-    ax.set_xticks([0, 6, 12, 18])
+    ax.set_xticks([0, 6, 12])
     ax.set_yticks([0, 50, 100])
     ax.set_xlabel('PFS - First Scan (months)')
     ax.set_ylabel('Patients (%)')
@@ -84,11 +84,12 @@ def main():
     fig = plot_experimental_arm(f'{data_dir}/{expr_name}.csv')
     fig.savefig(f'{fig_dir}/{expr_name}.pdf', bbox_inches='tight')
 
-    for corr in [0.24, 0.6, 1]:
+    for corr in [0.24, 0.5, 1]:
         sb.compute_benefit_at_corr(corr, use_bestmatch=True)
         sb.save_benefit_df()
         fig, ax = sb.plot_benefit_distribution(simple=True, save=False)
-        ax.set_xticks([0, 6, 12, 18])
+        ax.set_xlim(0, 12)
+        ax.set_xticks([0, 6, 12])
         ax.set_yticks([0, 50, 100])
         ax.set_title(r'$\rho$ = %.2f' % sb.corr_rho_actual)
         fig.savefig(f'{fig_dir}/{comb_name}.{sb.info_str}.distribution_simple_absolute.pdf', 
