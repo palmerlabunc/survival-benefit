@@ -535,25 +535,10 @@ def plot_one_combo_example_barplot(dat: pd.DataFrame,
     return fig
 
 
-def main():
-    plt.style.use('env/publication.mplstyle')
-
-    pdx_config = load_config()['PDX']
+def test_antagonism_and_correlation(dat: pd.DataFrame, pdx_config: Mapping):
     data_dir = pdx_config['data_dir']
     fig_dir = pdx_config['fig_dir']
     table_dir = pdx_config['table_dir']
-    
-    dat = pd.read_csv(f'{data_dir}/PDXE_drug_response.csv', 
-                      header=0, index_col=None)
-    dat.loc[:, 'TimeToDouble'] = dat['TimeToDouble'].round(2)
-
-    # Figure 1 - stripplot of added benefit
-    fig1_data = prepare_dataframe_for_stripplot(dat)
-    fig1 = stripplot_added_benefit(fig1_data)
-    
-    fig1_fname = 'PDXE_combo_added_benefit_stripplot'
-    fig1_data.to_csv(f'{table_dir}/{fig1_fname}.source_data.csv', index=False)
-    fig1.savefig(f'{fig_dir}/{fig1_fname}.pdf', bbox_inches='tight')
 
     # Figure 2 - distplot of added benefit
     mono_merged, mono_active, mono_inactive, comb_active = prepare_dataframes_for_distplot(dat)
@@ -562,13 +547,42 @@ def main():
     
     fig2.savefig(f'{fig_dir}/PDXE_added_benefit_distplot.pdf', 
                  bbox_inches='tight')
-
+    
     # Figure 3 - cumulative distplot of added benefit
     fig3 = cumulative_distplot_monotherapy_and_combo_added_benefit(
         mono_merged, mono_active, mono_inactive, comb_active)
 
     fig3.savefig(f'{fig_dir}/PDXE_added_benefit_cumulative_distplot.pdf', 
                  bbox_inches='tight')
+    
+    # Testing for antagonism - paired test
+    fig7_data, p = paired_test_for_antagonism(comb_active, mono_active)
+    fig7 = plot_paired_test_for_antagonism_lineplot(fig7_data, p)
+    fig7.savefig(f'{fig_dir}/PDXE_paired_test_for_antagonism_lineplot.pdf', 
+                 bbox_inches='tight')
+    fig7_data.to_csv(f'{table_dir}/PDXE_paired_test_for_antagonism_lineplot.source_data.csv', 
+                     index=False)
+
+    # Testing for antagonism - bootstrapping test
+    active_antag_sum_arr, comb_antag_sum, p= bootstrapping_test_for_antagonism(comb_active, mono_active)
+    fig8a = plot_boostrapping_distribution(active_antag_sum_arr, comb_antag_sum, p)
+
+    inactive_antag_sum_arr, comb_antag_sum, p = bootstrapping_test_for_antagonism(comb_active, mono_inactive)
+    fig8b = plot_boostrapping_distribution(inactive_antag_sum_arr, comb_antag_sum, p)
+
+    fig8a.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_active_mono.pdf', 
+                  bbox_inches='tight')
+    fig8b.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_inactive_mono.pdf', 
+                  bbox_inches='tight')
+    
+    # Figure 1 - stripplot of added benefit
+    fig1_data = prepare_dataframe_for_stripplot(dat)
+    fig1 = stripplot_added_benefit(fig1_data)
+    
+    fig1_fname = 'PDXE_combo_added_benefit_stripplot'
+    fig1_data.to_csv(f'{table_dir}/{fig1_fname}.source_data.csv', index=False)
+    fig1.savefig(f'{fig_dir}/{fig1_fname}.pdf', bbox_inches='tight')
+
 
     # Figure 4 - scatterplot of correlation differences
     merged = merge_dataframes(mono_merged, mono_active, mono_inactive, comb_active)
@@ -581,12 +595,16 @@ def main():
                  bbox_inches='tight')
     fig4_data.to_csv(f'{table_dir}/PDXE_corr_differences_scatterplot.source_data.csv', 
                      index=False)
-
-    # Figure 5 - actual benefit vs. inferred benefit
-    fig56_data, fig5 = correlation_benefit_comparison(dat)
-    fig5.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles.pdf', 
-                 bbox_inches='tight')
     
+
+def one_combo_example(dat: pd.DataFrame, pdx_config: Mapping):
+    """Plot and save figures for one combination example
+
+    Args:
+        dat (pd.DataFrame): _description_
+        pdx_config (Mapping): _description_
+    """
+    fig_dir = pdx_config['fig_dir']
     # one combination example: PDAC binimetinib + BKM120
     cond1 = dat['Treatment'].isin([pdx_config['example_experimental'], 
                                    pdx_config['example_control'], 
@@ -610,48 +628,51 @@ def main():
                                                     version=2)
     fig_barplot2.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles_one_combo_barplot2.pdf',
                          bbox_inches='tight')
-    
 
-    # Figure 6 - boxplot/lineplot actual benefit vs. inferred benefit RMSE by correlation
-    fig6_3lineplot = plot_correlation_benefit_comparison_3lineplot(fig56_data)
-    fig6_3lineplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.pdf', 
-                           bbox_inches='tight')
+
+def compare_inferred_apparent_to_actual_benefit(dat: pd.DataFrame, pdx_config: Mapping):
+    fig_dir = pdx_config['fig_dir']
+    table_dir = pdx_config['table_dir']
+
+    # Figure 5 - actual benefit vs. inferred benefit
+    fig56_data, fig5 = correlation_benefit_comparison(dat)
+    fig5.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles.pdf', 
+                 bbox_inches='tight')
     
     fig6_2lineplot = plot_correlation_benefit_comparison_2lineplot(fig56_data)
     fig6_2lineplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2lineplot.pdf', 
                            bbox_inches='tight')
-
-    fig6_3boxplot = plot_correlation_benefit_comparison_3boxplot(fig56_data)
-    fig6_3boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3boxplot.pdf',
-                          bbox_inches='tight')
-
-    fig6_2boxplot = plot_correlation_benefit_comparison_2boxplot(fig56_data)
-    fig6_2boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2boxplot.pdf',
-                          bbox_inches='tight')
-
-    fig56_data.to_csv(f'{table_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.source_data.csv',
-                      index=False)
     
-    # Testing for antagonism - paired test
-    fig7_data, p = paired_test_for_antagonism(comb_active, mono_active)
-    fig7 = plot_paired_test_for_antagonism_lineplot(fig7_data, p)
-    fig7.savefig(f'{fig_dir}/PDXE_paired_test_for_antagonism_lineplot.pdf', 
-                 bbox_inches='tight')
-    fig7_data.to_csv(f'{table_dir}/PDXE_paired_test_for_antagonism_lineplot.source_data.csv', 
-                     index=False)
+    # Figure 6 - boxplot/lineplot actual benefit vs. inferred benefit RMSE by correlation
+    #fig6_3lineplot = plot_correlation_benefit_comparison_3lineplot(fig56_data)
+    #fig6_3lineplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.pdf', 
+    #                       bbox_inches='tight')
 
-    # Testing for antagonism - bootstrapping test
-    active_antag_sum_arr, comb_antag_sum, p= bootstrapping_test_for_antagonism(comb_active, mono_active)
-    fig8a = plot_boostrapping_distribution(active_antag_sum_arr, comb_antag_sum, p)
+    #fig6_3boxplot = plot_correlation_benefit_comparison_3boxplot(fig56_data)
+    #fig6_3boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3boxplot.pdf',
+    #                      bbox_inches='tight')
 
-    inactive_antag_sum_arr, comb_antag_sum, p = bootstrapping_test_for_antagonism(comb_active, mono_inactive)
-    fig8b = plot_boostrapping_distribution(inactive_antag_sum_arr, comb_antag_sum, p)
+    #fig6_2boxplot = plot_correlation_benefit_comparison_2boxplot(fig56_data)
+    #fig6_2boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2boxplot.pdf',
+    #                      bbox_inches='tight')
+    #fig56_data.to_csv(f'{table_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.source_data.csv',
+    #                  index=False)
 
-    fig8a.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_active_mono.pdf', 
-                  bbox_inches='tight')
-    fig8b.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_inactive_mono.pdf', 
-                  bbox_inches='tight')
 
+def main():
+    plt.style.use('env/publication.mplstyle')
+
+    pdx_config = load_config()['PDX']
+    data_dir = pdx_config['data_dir']
     
+    dat = pd.read_csv(f'{data_dir}/PDXE_drug_response.csv', 
+                      header=0, index_col=None)
+    dat.loc[:, 'TimeToDouble'] = dat['TimeToDouble'].round(2)
+
+    test_antagonism_and_correlation(dat, pdx_config)
+    one_combo_example(dat, pdx_config)
+    compare_inferred_apparent_to_actual_benefit(dat, pdx_config)
+
+
 if __name__ == '__main__':
     main()
