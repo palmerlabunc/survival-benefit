@@ -1,8 +1,6 @@
-from pathlib import Path
-from multiprocessing import Pool
-import shutil
 import pandas as pd
 import numpy as np
+from scipy.stats import ttest_rel
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
@@ -11,6 +9,8 @@ import glob
 from survival_benefit.survival_benefit_class import SurvivalBenefit
 from utils import load_config
 
+config = load_config()
+COLOR_DICT = config['colors']
 
 def endpoint_simple(endpoint: str) -> str:
     if endpoint == 'OS':
@@ -95,24 +95,38 @@ def plot_1mo_responder_percentage(stats: pd.DataFrame, highlight=False) -> plt.f
         {True: sns.color_palette('deep')[0],
         False: sns.color_palette('deep')[1]})
 
-    fig, ax = plt.subplots(figsize=(8, 3))
+    fig, ax = plt.subplots(figsize=(3, 1.5))
     if highlight:
         stat_df.plot.bar(y=col, color=color_dict, ax=ax)
         ax.axhline(50, color='black', linestyle='--')
     else:
-        stat_df.plot.bar(y=col, ax=ax)
+        stat_df.plot.bar(y=col, ax=ax, color=COLOR_DICT['inference'])
 
     ax.set_xticklabels('')
+    ax.set_xticks([])
     ax.set_ylabel('Patients benefitting\nat least 1 month (%)')
     ax.set_yticks([0, 50, 100])
-    ax.set_xlabel('Combination therapies')
+    ax.set_xlabel('88 Combination therapies')
     ax.set_ylim(0, 100)
     ax.get_legend().remove()
     return fig
 
 
 def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame, stats: pd.DataFrame, 
-                                            highlight=False, endpoint: str = None) -> plt.figure:
+                                            highlight=False, 
+                                            endpoint: str = None) -> (pd.DataFrame, plt.Figure):
+    """_summary_
+
+    Args:
+        metadata (pd.DataFrame): _description_
+        stats (pd.DataFrame): _description_
+        highlight (bool, optional): Highlight combinations with > 3 months more benefit. Defaults to False.
+        endpoint (str, optional): _description_. Defaults to None.
+
+    Returns:
+        pd.DataFrame: source data
+        plt.Figure: plotted figure
+    """
     data_master_df = metadata.dropna(subset=['Key', 'Indication'])
     data_master_df.drop_duplicates(
         subset=['Cancer Type', 'Experimental', 'Control', 'Trial ID', 'Trial Name'],
@@ -134,31 +148,37 @@ def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame, stats: pd.Da
     if endpoint is not None:
         merged = merged[merged['endpoint'] == endpoint]
 
-    fig, ax = plt.subplots(figsize=(3,3))
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
     if not highlight:
         sns.scatterplot(y='Median_benefit_highbound', 
-                        x='actual', 
-                        style='endpoint', 
+                        x='actual',
+                        size=3,
                         data=merged, 
-                        ax=ax, color=sns.color_palette('deep')[3])
+                        ax=ax, color=COLOR_DICT['inference'])
     else:
-        sns.scatterplot(y='Median_benefit_highbound', x='actual', style='endpoint',
+        sns.scatterplot(y='Median_benefit_highbound', x='actual',
                         hue='3mo_more_benefit',
                         hue_order=[False, True],
+                        size=3,
                         data=merged, 
-                        ax=ax, palette=sns.color_palette('deep'))
-    ax.plot([0, 27], [0, 27], color='black', linestyle='--')
+                        ax=ax, 
+                        palette=[sns.color_palette('deep')[0], 'orange'])
+    
+    # legend box outside of the plot above the right corner
+    #ax.legend(bbox_to_anchor=(1.05, 1), loc=2)
+    ax.get_legend().remove()
+    ax.plot([0, 27], [0, 27], color='black', 
+            linestyle='--', linewidth=1)
     ax.set_xlim(0, 27)
     ax.set_ylim(0, 27)
     ax.set_xticks([0, 10, 20])
     ax.set_yticks([0, 10, 20])
-    ax.set_ylabel('Simulated median benefit\n(months)')
-    ax.set_xlabel('median benefit reported in trial\n(months)')
-    return fig
+    ax.set_ylabel('Median months gained\namong patients with benefit')
+    ax.set_xlabel('Median months gained\nreported in trial')
+    return merged, fig
 
 
 def plot_gini_histplot(compiled_stats: pd.DataFrame) -> plt.figure:
-    sns.set_palette('deep')
     fig, ax = plt.subplots(figsize=(3, 2))
     sns.histplot(x=compiled_stats['Gini_coefficient'], binwidth=0.1,
                  binrange=(0, 1),
@@ -171,26 +191,50 @@ def plot_gini_histplot(compiled_stats: pd.DataFrame) -> plt.figure:
 
 
 def plot_gini_compare_experimental_and_high(exp_corr_stats: pd.DataFrame,
-                                            high_orr_stats: pd.DataFrame) -> plt.figure:
-    fig, ax = plt.subplots(figsize=(3,2))
-    merged = pd.merge(exp_corr_stats, high_orr_stats, on=['Combination', 'Monotherapy'],
-                      suffixes=['_exp', '_high'])
-    sns.set_palette('deep')
-    sns.kdeplot(x='Gini_coefficient_high', data=merged,
-                label='Highest correlation',
+                                            high_corr_stats: pd.DataFrame) -> plt.Figure:
+    
+    exp_corr_stats.loc[:, 'type'] = 'Inference'
+    high_corr_stats.loc[:, 'type'] = 'Visual Appearance'
+
+    merged = pd.concat([exp_corr_stats[['combo_name', 'Gini_coefficient', 'type']], 
+                        high_corr_stats[['combo_name', 'Gini_coefficient', 'type']]], 
+                        axis=0)
+    
+    fig, axes = plt.subplots(2, 1, figsize=(4, 1.5),
+                            gridspec_kw={'height_ratios': [1, 0.2]},
+                            sharex=True)
+
+    # kdeplot
+    sns.kdeplot(x='Gini_coefficient', hue='type', hue_order=['Visual Appearance', 'Inference'],
+                palette=[COLOR_DICT['visual_appearance'], COLOR_DICT['inference']],
                 fill=True, alpha=0.5, linewidth=0,
-                ax=ax)
-    sns.kdeplot(x='Gini_coefficient_exp', data=merged, 
-                label='Experimental correlation',
-                fill=True, alpha=0.5, linewidth=0,
-                ax=ax)
-    ax.set_xlabel('Gini coefficient')
-    ax.legend()
-    ax.set_xlim(0, 1)
+                data=merged, ax=axes[0])
+
+    # rugplot
+    sns.scatterplot(x='Gini_coefficient', y='type', hue='type',
+                    hue_order=['Visual Appearance', 'Inference'],
+                    palette=[COLOR_DICT['visual_appearance'], COLOR_DICT['inference']],
+                    data=merged, marker='|', s=20, alpha=0.7, linewidth=1,
+                    ax=axes[1])
+    # paired t-test
+    t, p = ttest_rel(exp_corr_stats.sort_index()['Gini_coefficient'],
+                     high_corr_stats.sort_index()['Gini_coefficient'])
+    # legend outside of plot on ther right side
+    # remove border and legend title
+    axes[0].set_title(f'paired t p={p:.1e}')
+    axes[0].legend(bbox_to_anchor=(1.05, 1), loc=2)
+    axes[0].get_legend().set_title('')
+    axes[1].set_ylim(-0.5, 1.5)
+    axes[1].set_xlim(0, 1)
+    axes[1].set_xlabel('Gini coefficient')
+    axes[1].legend().remove()
+    axes[1].set_yticklabels('')
+    axes[1].set_ylabel('')
+    axes[1].set_yticks([])
+    
     return fig
 
-
-def plot_gini_by_something_boxplot(compiled_stats: pd.DataFrame, by: str, n_min=5) -> plt.figure:
+def plot_gini_by_something_boxplot(compiled_stats: pd.DataFrame, by: str, n_min=5) -> plt.Figure:
     """_summary_
 
     Args:
@@ -211,9 +255,33 @@ def plot_gini_by_something_boxplot(compiled_stats: pd.DataFrame, by: str, n_min=
     return fig
 
 
+def run_example_survival_benefit(input_df: pd.DataFrame, data_dir: str, pred_dir: str):
+    n = 500
+    for _, row in input_df.iterrows():
+        control_prefix = row['Control']
+        comb_prefix = row['Combination']
+        corr = row['Corr']
+
+        survival_benefit = SurvivalBenefit(mono_name=f'{data_dir}/{control_prefix}', 
+                                            comb_name=f'{data_dir}/{comb_prefix}',
+                                            n_patients=n, outdir=pred_dir, 
+                                            figsize=(1, 0.8), fig_format='pdf')
+
+        survival_benefit.compute_benefit_at_corr(corr, use_bestmatch=True)
+        survival_benefit.plot_compute_benefit_sanity_check(save=True)
+        plt.close()
+        survival_benefit.plot_t_delta_t_corr(save=True)
+        plt.close()
+        fig, ax = survival_benefit.plot_benefit_distribution(save=True, simple=True)
+        plt.close()
+        survival_benefit.save_summary_stats()
+        survival_benefit.save_benefit_df()
+
+
 def main():
     plt.style.use('env/publication.mplstyle')
     config = load_config()
+
     high_corr_stats = compile_stats(config['main_combo']['table_dir'] + '/predictions', 'high')
     exp_corr_stats = compile_stats(config['main_combo']['table_dir'] + '/predictions', 'exp')
     metadata = pd.read_excel(config['data_master_sheet'], 
@@ -227,43 +295,57 @@ def main():
     extended_exp_corr_stats.to_csv(f"{config['main_combo']['table_dir']}/extended_exp_corr_stats_compiled.csv",
                                    index=False)
 
-    endpoint = 'Surrogate'
-    exp_corr_stats = exp_corr_stats[exp_corr_stats['endpoint'] == endpoint]
-    high_corr_stats = high_corr_stats[high_corr_stats['endpoint'] == endpoint]
+    for endpoint in ['OS', 'Surrogate']:
+        exp_corr_stats_endpoint = exp_corr_stats[exp_corr_stats['endpoint'] == endpoint]
+        high_corr_stats_endpoint = high_corr_stats[high_corr_stats['endpoint'] == endpoint]
+        
+        fig1 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'Cancer Type')
+        fig1.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_cancer_type_boxplot.pdf",
+                    bbox_inches='tight')
+        fig2 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'Experimental Class')
+        fig2.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_experimental_class_boxplot.pdf",
+                    bbox_inches='tight')
+        fig3 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'endpoint')
+        fig3.savefig(f"{config['main_combo']['fig_dir']}/gini_by_endpoint_boxplot.pdf",
+                    bbox_inches='tight')
+        
+        fig4 = plot_gini_histplot(exp_corr_stats)
+        fig4.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_histplot.pdf",
+                    bbox_inches='tight')
+        
+        fig5 = plot_gini_compare_experimental_and_high(exp_corr_stats_endpoint, 
+                                                       high_corr_stats_endpoint)
+        fig5.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_compare_exp_and_high_kdeplot.pdf",
+                    bbox_inches='tight')
+        
+        fig6 = plot_1mo_responder_percentage(exp_corr_stats_endpoint, highlight=False)
+        fig6.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_barplot.pdf",
+                    bbox_inches='tight')
+        
+        fig7 = plot_1mo_responder_percentage(exp_corr_stats_endpoint, highlight=True)
+        fig7.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_highlight_barplot.pdf",
+                    bbox_inches='tight')
+        
+        fig8dat, fig8 = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats_endpoint)
+        fig8.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot.pdf",
+                    bbox_inches='tight')
+        
+        fig8dat, fig8b = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats_endpoint, 
+                                                        highlight=True, endpoint=endpoint)
+        fig8b.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.pdf",
+                    bbox_inches='tight')
+        fig8dat.to_csv(f"{config['main_combo']['table_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.source_data.csv")
     
-    fig1 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'Cancer Type')
-    fig1.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_cancer_type_boxplot.pdf",
-                 bbox_inches='tight')
-    fig2 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'Experimental Class')
-    fig2.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_experimental_class_boxplot.pdf",
-                 bbox_inches='tight')
-    fig3 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'endpoint')
-    fig3.savefig(f"{config['main_combo']['fig_dir']}/gini_by_endpoint_boxplot.pdf",
-                 bbox_inches='tight')
-    
-    fig4 = plot_gini_histplot(exp_corr_stats)
-    fig4.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_histplot.pdf",
-                 bbox_inches='tight')
-    fig5 = plot_gini_compare_experimental_and_high(exp_corr_stats, high_corr_stats)
-    fig5.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_compare_exp_and_high_kdeplot.pdf",
-                 bbox_inches='tight')
-    
-    fig6 = plot_1mo_responder_percentage(exp_corr_stats, highlight=False)
-    fig6.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_barplot.pdf",
-                 bbox_inches='tight')
-    
-    fig7 = plot_1mo_responder_percentage(exp_corr_stats, highlight=True)
-    fig7.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_highlight_barplot.pdf",
-                 bbox_inches='tight')
-    
-    #fig8 = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats)
-    #fig8.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot.pdf",
-    #             bbox_inches='tight')
-    
-    fig8b = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats, highlight=True, endpoint=endpoint)
-    fig8b.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.pdf",
-                 bbox_inches='tight')
-    
+    # 8: Breast_Ixabepilone-Capecitabine_Thomas2007_PFS
+    # 16: Breast_Ribociclib-Letrozole_Hortobagyi2018_PFS
+    # 63: Lung_Atezolizumab-Carboplatin+Etoposide_Horn2018_PFS
+    example_idx = [8, 16, 63]
+    input_df = pd.read_csv(config['main_combo']['metadata_sheet'], index_col=None, header=0)
+    input_df = input_df.iloc[example_idx, :]
+    data_dir = config['main_combo']['data_dir']
+    pred_dir = config['main_combo']['fig_dir']
+    run_example_survival_benefit(input_df, data_dir, pred_dir)
+
 
 if __name__ == '__main__':
     main()

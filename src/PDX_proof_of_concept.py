@@ -6,7 +6,7 @@ from scipy.stats import spearmanr, wilcoxon
 from lifelines import KaplanMeierFitter
 from typing import Tuple
 from PDXE_correlation import get_pdx_corr_data
-from utils import load_config
+from utils import load_config, set_figure_size_dim
 from PDX_proof_of_concept_helper import *
 import warnings
 
@@ -156,7 +156,7 @@ def distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.DataFrame, mono
 
 def cumulative_distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.DataFrame, mono_active: pd.DataFrame,
                                                             mono_inactive: pd.DataFrame, combo_active: pd.DataFrame) -> plt.Figure:
-    fig, ax = plt.subplots(1, 1, sharex=True, figsize=(4, 3))
+    fig, ax = plt.subplots(1, 1, sharex=True, figsize=(2, 2))
     sns.despine()
 
     sns.ecdfplot(x='added_benefit', data=mono_merged,
@@ -185,292 +185,435 @@ def merge_dataframes(mono_merged: pd.DataFrame, mono_active: pd.DataFrame,
     return merged
 
 
+def compute_r_A_deltaB(event_df: pd.DataFrame, control_drug_idx: int, tmax=100) -> float:
+    event_df_tmp = event_df.copy()
+    event_df_tmp.loc[event_df_tmp['E_mono1'] == 0, 'T_mono1'] = tmax
+    event_df_tmp.loc[event_df_tmp['E_mono2'] == 0, 'T_mono2'] = tmax
+
+    event_observed = event_df_tmp['E_comb'] + event_df_tmp[f'E_mono{control_drug_idx}'] == 2
+    deltaB =  (event_df_tmp['T_comb'] - event_df_tmp[f'T_mono{control_drug_idx}'])
+    r, p = spearmanr(event_df_tmp[event_observed][f'T_mono{control_drug_idx}'],
+                     deltaB[event_observed])
+    return r
+
+
 def corr_AB_vs_corr_A_deltaB(dat: pd.DataFrame) -> pd.DataFrame:
-    coxph_df_strict = coxph_combo_vs_mono(dat, strict_censoring=True)
-    event_df_dict_strict = make_event_dataframe_dict_combo(dat, coxph_df_strict, strict_censoring=True)
-    info = dat[['Model', 'Tumor Type', 'BRAF_mut', 'RAS_mut']
-               ].drop_duplicates().set_index('Model')
     tmax = 100
+    coxph_df = coxph_combo_vs_mono(dat, strict_censoring=False)
+    event_df_dict = make_event_dataframe_dict_combo(dat, coxph_df, 
+                                                    strict_censoring=False)
+    info = dat[['Model', 'Tumor Type', 'BRAF_mut', 'RAS_mut']].drop_duplicates().set_index('Model')
+    
     r_list = []
-    for i in coxph_df_strict.index:
-        tumor = coxph_df_strict.at[i, 'Tumor Type']
-        combo = coxph_df_strict.at[i, 'Combination']
+    
+    for i in coxph_df.index:
+        tumor = coxph_df.at[i, 'Tumor Type']
+        combo = coxph_df.at[i, 'Combination']
         drug1 = combo.split(' + ')[0]
         drug2 = combo.split(' + ')[1]
 
-        event_df = event_df_dict_strict[(tumor, combo)].copy()
-        corr_dat = get_pdx_corr_data(dat, info, drug1, drug2, 
-                                     metric='BestAvgResponse')
-        # correlation using BestAvgResponse
+        event_df = event_df_dict[(tumor, combo)].copy()
+        corr_dat = get_pdx_corr_data(
+            dat, info, drug1, drug2, metric='BestAvgResponse')
         r_bestavgres, _ = spearmanr(corr_dat[drug1], corr_dat[drug2])
 
-        # correlation using T_A vs. T_B
-        # If censored, use max follow-up time instead
-        event_df.loc[event_df['E_mono1'] == 0, 'T_mono1'] = tmax
-        event_df.loc[event_df['E_mono2'] == 0, 'T_mono2'] = tmax
-        r_t12, _ = spearmanr(event_df['T_mono1'], event_df['T_mono2'])
+        # Effect of drug 2
+        if coxph_df.at[i, 'HR1'] < 1 and coxph_df.at[i, 'p1'] < 0.05:
+            r = compute_r_A_deltaB(event_df, 2, tmax=tmax)
+            r_list.append([tumor, combo, drug2, r_bestavgres, r])
 
-        # correlation using T_A vs. delta_B (or vice-versa)
-        # use only models with event observed in both arms
-        event_observed = event_df['E_mono1'] + event_df['E_mono2'] == 2
-        event_df['added_benefit_of_drug1'] = event_df['T_comb'] - \
-            event_df['T_mono2']
-        event_df['added_benefit_of_drug2'] = event_df['T_comb'] - \
-            event_df['T_mono1']
+        # Effect of drug 1
+        if coxph_df.at[i, 'HR2'] < 1 and coxph_df.at[i, 'p2'] < 0.05:
+            r = compute_r_A_deltaB(event_df, 1, tmax=tmax)
+            r_list.append([tumor, combo, drug2, r_bestavgres, r])
 
-        r_1_delta2, _ = spearmanr(event_df[event_observed]['T_mono1'],
-                                event_df[event_observed]['added_benefit_of_drug2'])
+    columns = ['Tumor Type', 'Combination',
+            'Effect Drug', 'r_BestAvgRes', 'r_A_vs_deltaB']
 
-        r_2_delta1, _ = spearmanr(event_df[event_observed]['T_mono2'],
-                                event_df[event_observed]['added_benefit_of_drug1'])
-
-        # if the added drug is not beneficial, set correlation to nan
-        if not (coxph_df_strict.at[i, 'HR1'] < 1 and coxph_df_strict.at[i, 'p1'] < 0.05):
-            r_1_delta2 = np.nan
-        if not (coxph_df_strict.at[i, 'HR2'] < 1 and coxph_df_strict.at[i, 'p2'] < 0.05):
-            r_2_delta1 = np.nan
-
-        r_list.append([r_bestavgres, r_t12, r_1_delta2, r_2_delta1])
-
-    r_df = pd.DataFrame(r_list, index=coxph_df_strict.index,
-                        columns=['r_bestavgres', 'r_t12', 'r_1_delta2', 'r_2_delta1'])
-    merged = pd.concat([coxph_df_strict, r_df], axis=1)
-    return merged
+    r_df = pd.DataFrame(r_list,
+                        columns=columns)
+    
+    return r_df
 
 
-def pairplot_corr_differences(data: pd.DataFrame) -> plt.figure:
-    g = sns.pairplot(data[['r_bestavgres', 'r_t12', 'r_1_delta2', 'r_2_delta1']],
-                     corner=True, kind='reg', height=1.5, aspect=1, 
-                     plot_kws={'scatter_kws': {'s': 3}})
-    g.set(xlim=(-0.8, 0.7), ylim=(-0.8, 0.7))
-    return g.fig
+def plot_corr_AB_vs_corr_A_deltaB(data: pd.DataFrame) -> plt.figure:
+    fig, ax = plt.subplots(figsize=(3, 3))
+    sns.scatterplot(x='r_BestAvgRes', y='r_A_vs_deltaB', data=data, ax=ax)
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+    ax.plot([-1, 1], [-1, 1], color='k', linestyle='--')
+    return fig
 
 
+def plot_benefits(true_benefit_event_df: pd.DataFrame,
+                  ax: plt.Axes,
+                  color_dict: dict,
+                  inferred_deltat: np.array = None,
+                  visual_deltat: np.array = None,
+                  tmax: float = None) -> plt.Axes:
+    
+    true_benefit_km = KaplanMeierFitter()
+    true_benefit_km.fit(true_benefit_event_df['T_benefit'], 
+                        true_benefit_event_df['E_benefit'])
+    
     inferred_benefit_km = KaplanMeierFitter()
     inferred_benefit_km.fit(inferred_deltat)
-    
+
     if tmax is None:
         tmax = true_benefit_event_df['T_benefit'].max()
     ts = np.linspace(0, tmax, 500)
 
     ax.plot(ts, 100 * true_benefit_km.survival_function_at_times(ts),
+            color='k', linewidth=1.5, label='Groundtruth')
+    ax.plot(ts, 100 * inferred_benefit_km.survival_function_at_times(ts),
+            color=color_dict['inference'], linewidth=1.2, 
+            label='Inference')
     
     if visual_deltat is not None:
-
+        visual_benefit_km = KaplanMeierFitter()
+        visual_benefit_km.fit(visual_deltat)
+        ax.plot(ts, 100 * visual_benefit_km.survival_function_at_times(ts),
+                color=color_dict['visual_appearance'], linewidth=1.2, 
+                label='Visual Appearance')
+    
+    ax.set_xlim(0, tmax)
+    ax.set_ylim(0, 105)
+    ax.set_yticks([0, 50, 100])
+    ax.set_xlabel('Added benefit (days)')
+    ax.set_ylabel('PDX models (%)')
 
     return ax
-    sb.compute_benefit(prob_coef=50)
-    highest_corr = sb.corr_rho
-    if r > highest_corr:
-        return sb
-    sb.compute_benefit(prob_coef=-50)
-    lowest_corr = sb.corr_rho
-    if r < lowest_corr:
-        return sb
-    sb.compute_benefit_at_corr(r)
-    return sb
 
 
-def correlation_benefit_comparison(dat: pd.DataFrame) -> tuple[pd.DataFrame, plt.Figure]:
+def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt.Figure]:
     result_list = []
     coxph_df = coxph_combo_vs_mono(dat, strict_censoring=False)
     event_df_dict = make_event_dataframe_dict_combo(dat, coxph_df, strict_censoring=False)
     info = dat[['Model', 'Tumor Type', 'BRAF_mut', 'RAS_mut']].drop_duplicates().set_index('Model')
 
     n_combos = coxph_df.shape[0]
-    nrow = int(n_combos/4)
-    if nrow > 0:
-        ncol = 4
-                             save_mode=False)
-    else:
-        print("wrong effect_drug_idx")
-        return
-    
-    sb.set_tmax(100)
-
-    # correlation from bestAvgResponse
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("error", UserWarning)
-        try:
-            sb.compute_benefit_at_corr(r)
-        except UserWarning:
-            sb = find_closest_benefit_to_corr(sb, r)
-    
-    actual_corr = sb.corr_rho
-    actual_corr_benefit = sb.benefit_df.copy()
-    
-    # highest corr
-    sb.compute_benefit(prob_coef=50)
-    high_corr = sb.corr_rho
-    high_corr_benefit = sb.benefit_df.copy()
-
-    return (actual_corr, actual_corr_benefit, 
-            high_corr, high_corr_benefit)
-
-
-def compute_rmse_in_time(true_benefit: pd.Series, inferred_benefit: pd.DataFrame) -> np.array:
-    delta_t = inferred_benefit['delta_t'].sort_values(ascending=False).values
-    inferred_survival = np.linspace(0, 100, delta_t.size)
-    inferred = pd.DataFrame({'Survival': inferred_survival, 'Time': delta_t})
-    f = interpolate(inferred, x='Survival', y='Time')
-    
-    true_benefit[true_benefit < 0] = 0  # disregard negative values
-    true_benefit = np.sort(true_benefit)[::-1] # descending
-    surv_idx = np.linspace(0, 100 - 100 / true_benefit.size, true_benefit.size)
-    
-    return np.sqrt(np.mean(np.square(f(surv_idx) - true_benefit)))
-
-
-def plot_actual_benefit(ori: pd.DataFrame, effect_drug_idx: str, ax=None) -> tuple[plt.figure, plt.axes]:
-    # mono_idx is the effect drug monotherapy
-    benefit = ori.copy()
-    if effect_drug_idx == 2:
-        benefit['benefit'] = benefit['T_comb'] - benefit['T_mono1']
-        benefit['E_mono'] = benefit['E_mono1']
-    elif effect_drug_idx == 1:
-        benefit['benefit'] = benefit['T_comb'] - benefit['T_mono2']
-        benefit['E_mono'] = benefit['E_mono2']
-
-    benefit = benefit.sort_values('benefit', ascending=False)
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(3, 2))
-    
-    n = benefit.shape[0]
-
-    for i in range(n):
-        idx = benefit.index[i]
-        y_pos = 100 * i / n
-        if benefit.at[idx, 'E_comb'] + benefit.at[idx, 'E_mono'] == 2:  # event observed
-            ax.plot([0, benefit.at[idx, 'benefit']], [y_pos, y_pos],
-                    linewidth=3, color='k', alpha=0.7, solid_capstyle='butt')
-
-        # right censored (arrow)
-        elif benefit.at[idx, 'E_comb'] == 0 and benefit.at[idx, 'E_mono'] == 1:
-            ax.plot([0, benefit.at[idx, 'benefit']], [y_pos, y_pos],
-                    linewidth=3, color='k', alpha=0.7, solid_capstyle='butt')
-            ax.plot(benefit.at[idx, 'benefit'], y_pos, marker=9, markersize=7,
-                    color='k', alpha=0.7)
-
-        else:  # censored
-            ax.plot([0, benefit.at[idx, 'benefit']], [y_pos, y_pos],
-                    linewidth=3, color='gray', alpha=0.7, solid_capstyle='butt')
-    ax.set_xlim(0)
-
-    if ax is None:
-        return (fig, ax)
-    
-    return ax
-
-
-def plot_inferred_benefit(inferred_benefit: pd.DataFrame, ax=None, color='r') -> plt.axes:
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(3, 2))
-    t = inferred_benefit['delta_t'].sort_values(ascending=True).values
-    s = np.linspace(0, 100, t.size)[::-1]
-    ax.plot(t, s, linewidth=3, color=color, alpha=0.9)
-    return ax
-
-
-def correlation_benefit_comparison(dat: pd.DataFrame) -> tuple[pd.DataFrame, plt.figure]:
-    result_list = []
-    coxph_df_strict = coxph_combo_vs_mono(dat, strict_censoring=True)
-    event_df_dict_strict = make_event_dataframe_dict_combo(dat, coxph_df_strict, strict_censoring=True)
-    info = dat[['Model', 'Tumor Type', 'BRAF_mut', 'RAS_mut']].drop_duplicates().set_index('Model')
-
-    fig, axes = plt.subplots(5, 4, figsize=(9, 9))
-    axes = axes.flatten()
-    colors = sns.color_palette()
+    fig, axes = set_figure_size_dim(n_combos, ax_width=1.5, ax_height=1.5, max_cols=4)
     ax_idx = 0
-    
-    for i in coxph_df_strict.index:
-        tumor = coxph_df_strict.at[i, 'Tumor Type']
-        combo = coxph_df_strict.at[i, 'Combination']
+
+    for i in coxph_df.index:
+        tumor = coxph_df.at[i, 'Tumor Type']
+        combo = coxph_df.at[i, 'Combination']
         drug1 = combo.split(' + ')[0]
         drug2 = combo.split(' + ')[1]
 
-        event_df = event_df_dict_strict[(tumor, combo)]
-        corr_dat = get_pdx_corr_data(
-            dat, info, drug1, drug2, metric='BestAvgResponse')
-        r, p = spearmanr(corr_dat[drug1], corr_dat[drug2])
+        event_df = event_df_dict[(tumor, combo)]
 
-        # Effect of drug 2
-        if coxph_df_strict.at[i, 'HR1'] < 1 and coxph_df_strict.at[i, 'p1'] < 0.05:
-            drug2_effect_tuple = compute_benefits_helper(
-                event_df, drug1, drug2, 2, r)
-            true_benefit = event_df['T_comb'] - event_df['T_mono1']
-            actual_rmse = compute_rmse_in_time(true_benefit, drug2_effect_tuple[1])
-            high_rmse = compute_rmse_in_time(
-                true_benefit, drug2_effect_tuple[3])
-            result_list.append([tumor, combo, drug2, r,
-                                drug2_effect_tuple[0], drug2_effect_tuple[2],
-                                actual_rmse, high_rmse])
+        for control_drug_idx in [1, 2]:
+            if coxph_df.at[i, f'HR{control_drug_idx}'] >=1 or coxph_df.at[i, f'p{control_drug_idx}'] >= 0.05:
+                continue
+            
+            # compute true benefit
+            event_df = event_df_dict[(tumor, combo)]
+            benefit_event_df = added_benefit_event_table(event_df, control_drug_idx)
+            n = benefit_event_df.shape[0]
+
+            # use only models that have observed events in the monotherapy arm
+            # to calculate correlation
+            corr_dat = get_pdx_corr_data(dat, info, drug1, drug2, 
+                                         metric='BestAvgResponse')
+            corr_dat = corr_dat.reindex(benefit_event_df.index)
+            r_bestavgres, p = spearmanr(corr_dat[drug1], corr_dat[drug2])
+
+            event_df = event_df.reindex(benefit_event_df.index)
+            r_A_deltaB = compute_r_A_deltaB(event_df, control_drug_idx)
+            
+            # infer benefit using BestAvgResponse correlation
+            actual_r_bestavgres, r_bestavgres_benefit = compute_benefits_helper(
+                event_df, drug1, drug2, control_drug_idx, r_bestavgres)
+            # infer benefit using A_deltaB correlation
+            actual_r_A_deltaB, r_A_deltaB_benefit = compute_benefits_helper(
+                event_df, drug1, drug2, control_drug_idx, r_A_deltaB)
+            # infer benefit using high correlation (visual appearance)
+            actual_r_high, r_high_benefit = compute_benefits_helper(
+                event_df, drug1, drug2, control_drug_idx, 1)
+            
+            # compute RMSE
+            A_deltaB_rmse = compute_rmse_in_survival_km(benefit_event_df, 
+                                                        r_A_deltaB_benefit[r_A_deltaB_benefit['valid']][DELTA_T])
+            
+            bestavgres_rmse = compute_rmse_in_survival_km(benefit_event_df,
+                                                          r_bestavgres_benefit[r_bestavgres_benefit['valid']][DELTA_T])
+            high_rmse = compute_rmse_in_survival_km(benefit_event_df,
+                                                    r_high_benefit[r_high_benefit['valid']][DELTA_T])
+
+            # plot
             ax = axes[ax_idx]
+            
+            if control_drug_idx == 1:
+                ax.set_title(f'{tumor} {drug2} + {drug1}')
+                result_list.append([tumor, combo, drug2, n, r_bestavgres, r_A_deltaB,
+                                    actual_r_bestavgres, actual_r_A_deltaB, actual_r_high,
+                                    bestavgres_rmse, A_deltaB_rmse, high_rmse])
+            else:
+                ax.set_title(f'{tumor} {drug1} + {drug2}')
+                result_list.append([tumor, combo, drug1, n, r_bestavgres, r_A_deltaB,
+                                    actual_r_bestavgres, actual_r_A_deltaB, actual_r_high,
+                                    bestavgres_rmse, A_deltaB_rmse, high_rmse])
+            
+            ax = plot_benefits(benefit_event_df, ax, COLOR_DICT,
+                               inferred_deltat=r_bestavgres_benefit[DELTA_T],
+                               visual_deltat=r_high_benefit[DELTA_T])
+            
             ax_idx += 1
-            ax = plot_actual_benefit(event_df, 2, ax=ax)
-            ax = plot_inferred_benefit(
-                drug2_effect_tuple[1], ax=ax, color=colors[0])
-            ax = plot_inferred_benefit(
-                drug2_effect_tuple[3], ax=ax, color=colors[1])
-            ax.set_title(f'Effect of {drug2}\nin {tumor} {combo}')
 
-        # Effect of drug 1
-        if coxph_df_strict.at[i, 'HR2'] < 1 and coxph_df_strict.at[i, 'p2'] < 0.05:
-            drug1_effect_tuple = compute_benefits_helper(
-                event_df, drug1, drug2, 1, r)
-            true_benefit = event_df['T_comb'] - event_df['T_mono2']
-            actual_rmse = compute_rmse_in_time(true_benefit, drug1_effect_tuple[1])
-            high_rmse = compute_rmse_in_time(true_benefit, drug1_effect_tuple[3])
-            result_list.append([tumor, combo, drug1, r,
-                                drug1_effect_tuple[0], drug1_effect_tuple[2],
-                                actual_rmse, high_rmse])
-            ax = axes[ax_idx]
-            ax_idx += 1
-            ax = plot_actual_benefit(event_df, 1, ax=ax)
-            ax = plot_inferred_benefit(
-                drug1_effect_tuple[1], ax=ax, color=colors[0])
-            ax = plot_inferred_benefit(
-                drug1_effect_tuple[3], ax=ax, color=colors[1])
-            ax.set_title(f'Effect of {drug1}\nin {tumor} {combo}')
-
-    columns = ['Tumor Type', 'Combination', 'Target', 'r_BestAvgRes',
-            'r_Actual', 'r_Highest',
-            'RMSE_r_Actual', 'RMSE_r_Highest']
+    columns = ['Tumor Type', 'Combination', 'Effect Drug', 'N', 'r_BestAvgRes', 'r_A_deltaB',
+               'r_BestAvgRes_Actual', 'r_A_deltaB_Actual', 'r_Highest_Actual',
+               'RMSE_r_BestAvgRes', 'RMSE_r_A_deltaB', 'RMSE_r_Highest']
 
     result_df = pd.DataFrame(result_list, columns=columns)
     return result_df, fig
 
 
-def plot_correlation_benefit_comparison_boxplot(result_df: pd.DataFrame) -> plt.figure:
-    stat, p = wilcoxon(result_df['RMSE_r_Actual'], result_df['RMSE_r_Highest'])
+def plot_correlation_benefit_comparison_3lineplot(result_df: pd.DataFrame) -> plt.Figure:
+    melted = pd.melt(result_df,
+                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
+                     value_vars=['RMSE_r_BestAvgRes', 'RMSE_r_A_deltaB', 'RMSE_r_Highest'])
+
+    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
+        melted['Combination'] + ':|:' + melted['Effect Drug']
+
+    melted.loc[:, 'variable'] = pd.Categorical(melted['variable'],
+                                               categories=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'],
+                                               ordered=True)
+
+    fig, ax = plt.subplots(figsize=(3, 4))
+    sns.pointplot(melted, x='variable', y='value', hue='id',
+                  ax=ax)
+    ax.set_xticklabels(['A_deltaB', 'BestAvgResponse', 'High'])
+    ax.set_xlabel('Correlation')
+    ax.set_ylabel('RMSE (days)')
+    ax.legend().remove()
     
-    actual_df = result_df[['Tumor Type', 'Combination',
-                           'Target', 'r_Actual', 'RMSE_r_Actual']]
+    return fig
 
-    actual_df.loc[:, 'Correlation'] = 'Actual'
-    high_df = result_df[['Tumor Type', 'Combination',
-                        'Target', 'r_Highest', 'RMSE_r_Highest']]
-    high_df.loc[:, 'Correlation'] = 'Highest'
 
-    cols = ['Tumor Type', 'Combination', 'Target', 'r', 'RMSE', 'Correlation']
-    actual_df.columns = cols
-    high_df.columns = cols
+def plot_correlation_benefit_comparison_2lineplot(result_df: pd.DataFrame) -> plt.Figure:
+    stat, p = wilcoxon(result_df['RMSE_r_Highest'], 
+                       result_df['RMSE_r_BestAvgRes'])
+    n = result_df.shape[0]
+    fig, ax = plt.subplots(figsize=(1.2, 1.5))
+    for i in range(result_df.shape[0]):
+        ax.plot([0, 1], 
+                [result_df.at[i, 'RMSE_r_Highest'], result_df.at[i, 'RMSE_r_BestAvgRes']], 
+                marker='o', color='k', 
+                markersize=3, linewidth=0.75)
+    ax.set_title(f'Wilcoxon p={p:.2e} (n={n})')
+    ax.set_xlim(-0.5, 1.5)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['Visual\nAppearance', 'Inference'])
+    ax.set_ylabel('Error (%)')
 
-    melted = pd.concat([actual_df, high_df], axis=0, ignore_index=False)
-    fig, ax = plt.subplots(figsize=(2, 3))
-    sns.boxplot(data=melted, x='Correlation', y='RMSE', ax=ax)
+    return fig
+
+
+def plot_correlation_benefit_comparison_3boxplot(result_df: pd.DataFrame) -> plt.Figure:
+    melted = pd.melt(result_df,
+                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
+                     value_vars=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'])
+
+    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
+        melted['Combination'] + ':|:' + melted['Effect Drug']
+
+    melted.loc[:, 'variable'] = pd.Categorical(melted['variable'],
+                                            categories=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'],
+                                            ordered=True)
+    
+    fig, ax = plt.subplots(figsize=(3, 4))
+    sns.boxplot(melted, x='variable', y='value',
+                ax=ax)
+    sns.stripplot(melted, x='variable', y='value',
+                  ax=ax)
+    ax.set_xticklabels(['A_deltaB', 'BestAvgResponse', 'High'])
+    ax.set_xlabel('Correlation')
+    ax.set_ylabel('RMSE (days)')
+
+    return fig
+
+
+def plot_correlation_benefit_comparison_2boxplot(result_df: pd.DataFrame) -> plt.Figure:
+    melted = pd.melt(result_df,
+                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
+                     value_vars=['RMSE_r_BestAvgRes', 'RMSE_r_Highest'])
+
+    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
+        melted['Combination'] + ':|:' + melted['Effect Drug']
+    
+    stat, p = wilcoxon(result_df['RMSE_r_Highest'], 
+                       result_df['RMSE_r_BestAvgRes'])
+
+    fig, ax = plt.subplots(figsize=(3, 4))
+    sns.boxplot(melted, x='variable', y='value',
+                ax=ax)
+    sns.stripplot(melted, x='variable', y='value',
+                  ax=ax)
+    ax.set_xticklabels(['BestAvgResponse', 'High'])
+    ax.set_xlabel('Correlation')
+    ax.set_ylabel('RMSE (days)')
     ax.set_title(f'two-sided Wilcoxon test (p={p:.2f})')
     return fig
 
 
+def bootstrapping_test_for_antagonism(combo_added_benefit: pd.DataFrame, 
+                                      mono_added_benefit: pd.DataFrame, 
+                                      n_rep=10000) -> tuple[np.array, float, float]:
+    rng = np.random.default_rng(0)
+    antag_sum_arr = np.zeros(n_rep)
+    for run in range(n_rep):
+        sampled_idx = rng.integers(0, len(mono_added_benefit), size=len(combo_added_benefit))
+        mono_sampled = mono_added_benefit.loc[sampled_idx, 'added_benefit']
+        antag_sum = mono_sampled[mono_sampled < 0].sum()
+        antag_sum_arr[run] = antag_sum
+
+    comb_antag_sum = combo_added_benefit[combo_added_benefit['added_benefit'] < 0]['added_benefit'].sum()
+    null_mean = antag_sum_arr.mean()
+    diff = abs(null_mean - comb_antag_sum)
+    p = ((antag_sum_arr < null_mean - diff).sum() + (antag_sum_arr > null_mean + diff).sum()) / n_rep
+    return (antag_sum_arr, comb_antag_sum, p)
+
+
+def plot_boostrapping_distribution(antag_sum_arr: np.array, 
+                                   comb_antag_sum: float, 
+                                   p: float) -> plt.Figure:
+    sns.set_palette('deep')
+    fig, ax = plt.subplots(figsize=(3, 2))
+    sns.histplot(antag_sum_arr, ax=ax, stat='density')
+    ax.axvline(comb_antag_sum, color='k', linestyle='--')
+    ax.set_title(f'p = {p:.2f}')
+    ax.set_xlabel('Sum of negative added benefit (days)')
+    return fig
+
+
+def mean_times_prob_of_negative_benefit(df: pd.DataFrame) -> float:
+    prob = (df['added_benefit'] < 0).sum() / df.shape[0]
+    avg = df[df['added_benefit'] < 0]['added_benefit'].mean()
+    return round(avg * prob, 2)
+
+
+def paired_test_for_antagonism(combo_added_benefit: pd.DataFrame, 
+                               mono_added_benefit: pd.DataFrame) -> tuple[pd.DataFrame, float]:
+    mono_grouped = mono_added_benefit.groupby(['Tumor Type', 'Treatment'])
+    comb_grouped = combo_added_benefit.groupby(['Tumor Type', 'Combination', 'target'])
+    vals = []
+    for idx, comb in comb_grouped:
+        cancer, combo, target = idx
+        mono = mono_grouped.get_group((cancer, target))
+        comb_val = mean_times_prob_of_negative_benefit(comb)
+        mono_val = mean_times_prob_of_negative_benefit(mono)
+        vals.append([cancer, combo, target, mono_val, comb_val])
+
+    df = pd.DataFrame(vals, columns=['Tumor Type', 'Combination',
+                      'target', 'mono_added_benefit', 'combo_added_benefit'])
+    stat, p = wilcoxon(df['mono_added_benefit'], df['combo_added_benefit'])
+    return (df, p)
+
+
+def plot_paired_test_for_antagonism_lineplot(df: pd.DataFrame, p: float) -> plt.figure:
+    fig, ax = plt.subplots(figsize=(2, 2))
+    for i in df.index:
+        ax.plot([0, 1], [df.at[i, 'mono_added_benefit'], df.at[i, 'combo_added_benefit']],
+                 color='k', alpha=0.8, marker='o')
+    ax.set_xticks([0, 1])
+    ax.set_xlim(-0.5, 1.5)
+    ax.set_title(f"Wilcoxon test p={p:.2f}")
+    ax.set_xticklabels(['Monotherapy', 'Combination'])
+    ax.set_ylabel('Mean * proportion of\nnegative added benefit (days)')
+    return fig
+
+
+def plot_one_combo_example_barplot(dat: pd.DataFrame, 
+                                   tumor: str, control_drug: str, added_drug: str,
+                                   version: int = 1) -> plt.Figure:
+    combo_drug = control_drug + ' + ' + added_drug
+    models = get_models(dat, tumor, combo_drug)
+
+    event_mono = get_event_table(dat, models, control_drug, 
+                                 strict_censoring=False)
+    event_combo = get_event_table(dat, models, combo_drug, 
+                                  strict_censoring=False)
+    
+    event_models = np.intersect1d(event_mono[event_mono['Event'] == 1].index,
+                                  event_combo[event_combo['Event'] == 1].index)
+    
+    merged = pd.merge(event_mono['Time'].reindex(event_models),
+                      event_combo['Time'].reindex(event_models),
+                      left_index=True, right_index=True,
+                      suffixes=[f'_control', '_combo'])
+    
+    merged = merged.sort_values('Time_combo', ascending=False)
+
+    if tumor == 'PDAC' and added_drug == 'binimetinib' and control_drug == 'BKM120':
+        example_df = merged.reindex(['X-2026', 'X-2997', 'X-2043'])
+    else:
+        example_df = merged.iloc[:3, :]
+
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    # Version 1: have some space inbetween for ...
+    if version == 1:
+        for i in range(example_df.shape[0]):
+            t_control = example_df.iat[i, 0] # control
+            t_combo = example_df.iat[i, 1] # combo
+            
+            if i > 0:
+                i += 2
+            ax.plot([0, t_control], [i+0.2, i+0.2], 
+                    linewidth=5, 
+                    color=COLOR_DICT['control_arm'])
+            ax.plot([t_control, t_combo], [i+0.2, i+0.2], 
+                    linewidth=5,
+                    color=COLOR_DICT['added_benefit'])
+            ax.plot([0, t_combo], [i-0.2, i-0.2], 
+                    linewidth=5,
+                    color=COLOR_DICT['combination_arm'])
+
+        ax.set_ylim(-0.5, 4.5)
+        ax.set_yticks(range(5))
+        ax.set_yticklabels([example_df.index[0], ':', ':', 
+                            example_df.index[1], example_df.index[2]])
+    
+    # Version 2: no space inbetween
+    elif version == 2:
+        for i in range(example_df.shape[0]):
+            t_control = example_df.iat[i, 0] # control
+            t_combo = example_df.iat[i, 1] # combo
+            
+            ax.plot([0, t_control], [i+0.15, i+0.15], 
+                    linewidth=7,
+                    color=COLOR_DICT['control_arm'])
+            ax.plot([t_control, t_combo], [i+0.15, i+0.15], 
+                    linewidth=7,
+                    color=COLOR_DICT['added_benefit'])
+            ax.plot([0, t_combo], [i-0.15, i-0.15], 
+                    linewidth=7,
+                    color=COLOR_DICT['combination_arm'])
+            ax.set_ylim(-0.5, 2.5)
+        ax.set_yticks(range(3))
+        ax.set_yticklabels(example_df.index)
+
+    ax.set_xlim(0)
+    ax.set_xlabel('Time to double (days)')
+    ax.set_title(f'{tumor} {added_drug} + {control_drug}')
+
+    return fig
+
+
 def main():
-    config = load_config()['PDX']
-    data_dir = config['data_dir']
-    fig_dir = config['fig_dir']
-    table_dir = config['table_dir']
+    plt.style.use('env/publication.mplstyle')
+
+    pdx_config = load_config()['PDX']
+    data_dir = pdx_config['data_dir']
+    fig_dir = pdx_config['fig_dir']
+    table_dir = pdx_config['table_dir']
+    
     dat = pd.read_csv(f'{data_dir}/PDXE_drug_response.csv', 
                       header=0, index_col=None)
     dat.loc[:, 'TimeToDouble'] = dat['TimeToDouble'].round(2)
 
+    # Figure 1 - stripplot of added benefit
     fig1_data = prepare_dataframe_for_stripplot(dat)
     fig1 = stripplot_added_benefit(fig1_data)
     
@@ -478,30 +621,103 @@ def main():
     fig1_data.to_csv(f'{table_dir}/{fig1_fname}.source_data.csv', index=False)
     fig1.savefig(f'{fig_dir}/{fig1_fname}.pdf', bbox_inches='tight')
 
-    added_benefit_data_tuple = prepare_dataframes_for_distplot(dat)
+    # Figure 2 - distplot of added benefit
+    mono_merged, mono_active, mono_inactive, comb_active = prepare_dataframes_for_distplot(dat)
     fig2 = distplot_monotherapy_and_combo_added_benefit(
-        *added_benefit_data_tuple)
+        mono_merged, mono_active, mono_inactive, comb_active)
+    
+    fig2.savefig(f'{fig_dir}/PDXE_added_benefit_distplot.pdf', 
+                 bbox_inches='tight')
+
+    # Figure 3 - cumulative distplot of added benefit
     fig3 = cumulative_distplot_monotherapy_and_combo_added_benefit(
-        *added_benefit_data_tuple)
+        mono_merged, mono_active, mono_inactive, comb_active)
 
-    fig2.savefig(f'{fig_dir}/PDXE_added_benefit_distplot.pdf', bbox_inches='tight')
-    fig3.savefig(f'{fig_dir}/PDXE_added_benefit_cumulative_distplot.pdf', bbox_inches='tight')
+    fig3.savefig(f'{fig_dir}/PDXE_added_benefit_cumulative_distplot.pdf', 
+                 bbox_inches='tight')
 
-    merged = merge_dataframes(*added_benefit_data_tuple)
-    merged.to_csv(f'{table_dir}/PDXE_added_benefit_distplot.source_data.csv', index=False)
+    # Figure 4 - scatterplot of correlation differences
+    merged = merge_dataframes(mono_merged, mono_active, mono_inactive, comb_active)
+    merged.to_csv(f'{table_dir}/PDXE_added_benefit_distplot.source_data.csv', 
+                  index=False)
 
     fig4_data = corr_AB_vs_corr_A_deltaB(dat)
-    fig4 = pairplot_corr_differences(fig4_data)
-    fig4.savefig(f'{fig_dir}/PDXE_corr_differences_pairplot.pdf', bbox_inches='tight')
-    fig4_data.to_csv(f'{table_dir}/PDXE_corr_differences_pairplot.source_data.csv', index=False)
+    fig4 = plot_corr_AB_vs_corr_A_deltaB(fig4_data)
+    fig4.savefig(f'{fig_dir}/PDXE_corr_differences_scatterplot.pdf', 
+                 bbox_inches='tight')
+    fig4_data.to_csv(f'{table_dir}/PDXE_corr_differences_scatterplot.source_data.csv', 
+                     index=False)
 
+    # Figure 5 - actual benefit vs. inferred benefit
     fig56_data, fig5 = correlation_benefit_comparison(dat)
-    fig5.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles.pdf', bbox_inches='tight')
+    fig5.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles.pdf', 
+                 bbox_inches='tight')
     
-    fig6 = plot_correlation_benefit_comparison_boxplot(fig56_data)
-    fig6.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_boxplot.pdf', bbox_inches='tight')
-    fig56_data.to_csv(f'{table_dir}/PDXE_actual_vs_high_corr_benefit_boxplot.source_data.csv', index=False)
+    # one combination example: PDAC binimetinib + BKM120
+    cond1 = dat['Treatment'].isin([pdx_config['example_experimental'], 
+                                   pdx_config['example_control'], 
+                                   pdx_config['example_combo']])
+    cond2 = dat['Tumor Type'] == pdx_config['example_tumor']
+    one_combo_data = dat[cond1 & cond2]
+    _, one_combo_benefit_fig = correlation_benefit_comparison(one_combo_data)
+    one_combo_benefit_fig.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles_one_combo.pdf',
+                                  bbox_inches='tight')
 
+    fig_barplot1 = plot_one_combo_example_barplot(dat, pdx_config['example_tumor'], 
+                                                  pdx_config['example_control'], 
+                                                  pdx_config['example_experimental'], 
+                                                  version=1)
+    fig_barplot1.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles_one_combo_barplot1.pdf',
+                         bbox_inches='tight')
+    
+    fig_barplot2 = plot_one_combo_example_barplot(dat, pdx_config['example_tumor'],
+                                                    pdx_config['example_control'], 
+                                                    pdx_config['example_experimental'], 
+                                                    version=2)
+    fig_barplot2.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles_one_combo_barplot2.pdf',
+                         bbox_inches='tight')
+    
 
+    # Figure 6 - boxplot/lineplot actual benefit vs. inferred benefit RMSE by correlation
+    fig6_3lineplot = plot_correlation_benefit_comparison_3lineplot(fig56_data)
+    fig6_3lineplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.pdf', 
+                           bbox_inches='tight')
+    
+    fig6_2lineplot = plot_correlation_benefit_comparison_2lineplot(fig56_data)
+    fig6_2lineplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2lineplot.pdf', 
+                           bbox_inches='tight')
+
+    fig6_3boxplot = plot_correlation_benefit_comparison_3boxplot(fig56_data)
+    fig6_3boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3boxplot.pdf',
+                          bbox_inches='tight')
+
+    fig6_2boxplot = plot_correlation_benefit_comparison_2boxplot(fig56_data)
+    fig6_2boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2boxplot.pdf',
+                          bbox_inches='tight')
+
+    fig56_data.to_csv(f'{table_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.source_data.csv',
+                      index=False)
+    
+    # Testing for antagonism - paired test
+    fig7_data, p = paired_test_for_antagonism(comb_active, mono_active)
+    fig7 = plot_paired_test_for_antagonism_lineplot(fig7_data, p)
+    fig7.savefig(f'{fig_dir}/PDXE_paired_test_for_antagonism_lineplot.pdf', 
+                 bbox_inches='tight')
+    fig7_data.to_csv(f'{table_dir}/PDXE_paired_test_for_antagonism_lineplot.source_data.csv', 
+                     index=False)
+
+    # Testing for antagonism - bootstrapping test
+    active_antag_sum_arr, comb_antag_sum, p= bootstrapping_test_for_antagonism(comb_active, mono_active)
+    fig8a = plot_boostrapping_distribution(active_antag_sum_arr, comb_antag_sum, p)
+
+    inactive_antag_sum_arr, comb_antag_sum, p = bootstrapping_test_for_antagonism(comb_active, mono_inactive)
+    fig8b = plot_boostrapping_distribution(inactive_antag_sum_arr, comb_antag_sum, p)
+
+    fig8a.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_active_mono.pdf', 
+                  bbox_inches='tight')
+    fig8b.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_inactive_mono.pdf', 
+                  bbox_inches='tight')
+
+    
 if __name__ == '__main__':
     main()

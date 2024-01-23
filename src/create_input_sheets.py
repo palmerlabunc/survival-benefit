@@ -1,6 +1,7 @@
 from utils import load_config
 import pandas as pd
 import numpy as np
+import argparse
 
 def get_control_prefix(cancer_type, control_drug, 
                        first_author, year, endpoint, additional_info=None) -> str:
@@ -78,7 +79,8 @@ def create_endpoint_subset_sheet(master_df: pd.DataFrame, endpoint: str) -> pd.D
     """    
     hr_related_cols = ['HR', 'HR 95% CI', 'median benefit', 'HR pval']
     if endpoint == 'OS':
-        df = master_df[master_df['Include OS (0/1/NA)'] == 1]
+        condition = (master_df['Include OS (0/1/NA)'] == 1)
+        df = master_df[condition]
         df = df.drop([f'Surrogate {item}' for item in hr_related_cols], axis=1)
 
     elif endpoint == 'Surrogate':
@@ -135,7 +137,7 @@ def create_main_combo_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.D
             print(idx)
         n_combo = int(row['Combination Arm N'])
         n_control = int(row['Control Arm N'])
-        corr = row['Pearsonr']
+        corr = row['Spearmanr']
 
         include_os = (row['Include OS (0/1/NA)'] == 1)
         include_surrogate = (row['Include Surrogate (0/1/NA)'] == 1)
@@ -198,28 +200,10 @@ def create_biomarker_input_sheet(biomarker_data_sheet: pd.DataFrame, config: dic
         corr = row['Spearmanr']
         biomarker = row['Biomarker']
 
-        include_os = (row['Include OS (0/1/NA)'] == 1)
-        has_os_biomarker = pd.notna(row['Biomarker-positive OS HR'])
         
         include_surrogate = (row['Include Surrogate (0/1/NA)'] == 1)
         has_surrogate_biomarker = pd.notna(row['Biomarker-positive Surrogate HR'])
         
-        if include_os and has_os_biomarker:
-            metric = 'OS'
-            ITT_HR = row[f'{metric} HR']
-            ITT_HR_95low = row[f'{metric} HR 95% CI'].split(',')[0]
-            ITT_HR_95high = row[f'{metric} HR 95% CI'].split(',')[1]
-            biomarker_HR = row[f'Biomarker-positive {metric} HR']
-            biomarker_HR_95low = row[f'Biomarker-positive {metric} HR 95% CI'].split(',')[0]
-            biomarker_HR_95high = row[f'Biomarker-positive {metric} HR 95% CI'].split(',')[1]
-
-            data.append([get_control_prefix(cancer_type, control_drug, first_author, year, 'OS', additional_info=additional_info), 
-                         get_combination_prefix(
-                             cancer_type, experimental_drug, control_drug, first_author, year, 'OS', additional_info=additional_info),
-                         get_label(cancer_type, experimental_drug, control_drug,
-                                   first_author, year, 'OS', additional_info=additional_info),
-                         n_control, n_combo, corr, ITT_HR, ITT_HR_95low, ITT_HR_95high, 
-                         biomarker, biomarker_HR, biomarker_HR_95low, biomarker_HR_95high])
         
         if include_surrogate and has_surrogate_biomarker:
             metric = 'Surrogate'
@@ -242,35 +226,51 @@ def create_biomarker_input_sheet(biomarker_data_sheet: pd.DataFrame, config: dic
                'ITT_HR', 'ITT_HR_95low', 'ITT_HR_95high', 
                'Biomarker', 'Biomarker_HR', 'Biomarker_HR_95low', 'Biomarker_HR_95high']
     result = pd.DataFrame(data=data, columns=columns)
-    return result
+    return result.sort_values('Combination')
 
 
-def create_monotherapy_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.DataFrame:
-    ...
-
-
-def create_placebo_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.DataFrame:
-    ...
-
+def create_monotherapy_input_sheet(indf: pd.DataFrame, config: dict) -> pd.DataFrame:
+    # select only columns of interest
+    indf = indf[indf['Figure'].isin(['additive', 'between'])].reset_index()
+    df = indf[['Experimental', 'Control', 'Combination', 
+               'Experimental First Scan Time', 'Control First Scan Time', 
+               'Corr', 'N_experimental', 'N_control', 'N_combination', 'Figure']]
+    
+    # update to more recent data
+    idx = df[df['Combination'] == 'Myeloma_Daratumumab-Carfilzomib+Dexamethasone_Dimopoulos2020_PFS'].index
+    df.loc[idx, 'Combination'] = 'Myeloma_Daratumumab-Carfilzomib+Dexamethasone_Usmani2022_PFS'
+    df.loc[idx, 'Control'] = 'Myeloma_Carfilzomib+Dexamethasone_Usmani2022_PFS'
+    return df
+    
 
 def main():
     config = load_config()
-    master_df = pd.read_excel(config['data_master_sheet'], 
-                              header=0, index_col=0, engine='openpyxl')
-    master_df = master_df.dropna(subset=['Indication'])
-    main_df = create_main_combo_input_sheet(master_df, config)
 
-    biomarker_sheet = pd.read_excel('data/clinical_trials/biomarker_data_sheet.xlsx',
-                                    header=0, index_col=0, engine='openpyxl')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset', type=str, 
+                        help='Dataset to use (main_combo, biomarker, single_agent)')
+    args = parser.parse_args()
 
-    biomarker_df = create_biomarker_input_sheet(biomarker_sheet, config)
-    #monotherapy_df = create_monotherapy_input_sheet(master_df, config)
-    #placebo_df = create_placebo_input_sheet(master_df, config)
+    if args.dataset == 'main_combo':
+        master_df = pd.read_excel(config['data_master_sheet'], 
+                                header=0, index_col=0, engine='openpyxl')
+        master_df = master_df.dropna(subset=['Indication'])
+        input_df = create_main_combo_input_sheet(master_df, config)
 
-    main_df.to_csv(config['main_combo']['metadata_sheet'], index=False)
-    biomarker_df.to_csv(config['biomarker']['metadata_sheet'], index=False)
-    #monotherapy_df.to_csv(config['single_agent']['metadata_sheet'], index=False)
-    #placebo_df.to_csv(config['placebo']['metadata_sheet'], index=False)
+    elif args.dataset == 'biomarker':
+        biomarker_sheet = pd.read_excel('data/clinical_trials/biomarker_data_sheet.xlsx',
+                                        header=0, index_col=0, engine='openpyxl')
+        input_df = create_biomarker_input_sheet(biomarker_sheet, config)
+
+    elif args.dataset == 'single_agent':
+        monotherapy_sheet = pd.read_csv("data/clinical_trials/single_agent/cox_ph_test.csv",
+                                        header=0, index_col=None)
+        input_df = create_monotherapy_input_sheet(monotherapy_sheet, config)
+    
+    else:
+        raise ValueError(f'Dataset {args.dataset} is not supported.')
+    
+    input_df.to_csv(config[args.dataset]['metadata_sheet'], index=False)
 
 
 if __name__ == '__main__':
