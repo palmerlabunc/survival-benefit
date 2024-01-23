@@ -4,12 +4,14 @@ import pandas as pd
 import numpy as np
 from itertools import combinations_with_replacement
 from collections.abc import Iterable
+import matplotlib.pyplot as plt
+import seaborn as sns
 from processing.precompute_CTRPv2_correlation import import_ctrp_data, precompute_moa_drug_list
 from utils import load_config
 
 CONFIG = load_config()
 
-_, DRUG_INFO, _, _ = import_ctrp_data(CONFIG['cell_line']['data_dir'])
+CELL_INFO, DRUG_INFO, CANCER_TYPE_INFO, CTRP = import_ctrp_data(CONFIG['cell_line']['data_dir'])
 CHEMO_DRUGS, TARGETED_DRUGS = precompute_moa_drug_list(DRUG_INFO)
 
 
@@ -83,9 +85,12 @@ def prepare_ctrp_agg_data(data_dir: str, cancer_type='PanCancer',
     
     # set vs. set
     if set_vs_set_flag:
-        drugA_list = get_moa_drug_list(df.index, drugA_setname, chemo_drug_list=CHEMO_DRUGS, targeted_drug_list=TARGETED_DRUGS)
-        drugB_list = get_moa_drug_list(
-            df.index, drugB_setname, chemo_drug_list=CHEMO_DRUGS, targeted_drug_list=TARGETED_DRUGS)
+        drugA_list = get_moa_drug_list(df.index, drugA_setname, 
+                                       chemo_drug_list=CHEMO_DRUGS, 
+                                       targeted_drug_list=TARGETED_DRUGS)
+        drugB_list = get_moa_drug_list(df.index, drugB_setname, 
+                                       chemo_drug_list=CHEMO_DRUGS, 
+                                       targeted_drug_list=TARGETED_DRUGS)
 
         vals = df.loc[drugA_list, drugB_list].values.flatten()
         vals = vals[~np.isnan(vals)]
@@ -148,6 +153,56 @@ def get_CTRPv2_one_vs_one_correlation(data_dir: str, cancer_type: str, drugA: st
     return round(df.loc[drugA, drugB], 5)
 
 
+def plot_correlation_distribution(corr_values: np.ndarray, mean_val: float) -> plt.Figure:
+    """Plot distribution of correlation values
+
+    Args:
+        corr_values (np.ndarray): 1D array of correlation values
+        mean_val (float): mean of correlation values
+
+    Returns:
+        plt.Figure: figure of distribution plot
+    """
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    sns.histplot(corr_values, binwidth=0.1, color='gray', ax=ax)
+    ax.set_xlabel('Correlation')
+    ax.set_ylabel('Count')
+    ax.axvline(mean_val, color='red', linewidth=1, label=f'Mean {mean_val:.2f}')
+    ax.set_xlim(-1, 1)
+    ax.legend()
+    return fig
+
+
+def plot_correlation_one_vs_one(data_dir: str, cancer_type: str, 
+                                drugA: str, drugB: str, 
+                                corr_method: str = 'pearson') -> plt.Figure:
+    cond = CTRP['Harmonized_Compound_Name'].isin([drugA, drugB])
+
+    if cancer_type != "PanCancer":
+        cell_lines = CANCER_TYPE_INFO[CANCER_TYPE_INFO == cancer_type].index
+        cond = cond & (CTRP['Harmonized_Cell_Line_ID'].isin(cell_lines))
+
+    df = pd.pivot_table(CTRP[cond], values='CTRP_AUC', 
+                        index='Harmonized_Cell_Line_ID',
+                        columns='Harmonized_Compound_Name')
+    
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    sns.scatterplot(x=drugA, y=drugB, data=df, ax=ax)
+    ax.set_xlabel(f'{drugA} AUC')
+    ax.set_ylabel(f'{drugB} AUC')
+    ax.set_xlim(0.4, 1)
+    ax.set_ylim(0.4, 1)
+    
+    ax.set_xticks([0.4, 0.6, 0.8, 1])
+    ax.set_yticks([0.4, 0.6, 0.8, 1])
+
+    r = get_CTRPv2_one_vs_one_correlation(data_dir, cancer_type, drugA, drugB, 
+                                          corr_method=corr_method)
+    
+    ax.set_title(f'{cancer_type} {corr_method} r={r:.2f}')
+    return fig
+
+
 def report_CTRPv2_correlation(data_dir: str, outfile: str, corr_method='pearson'):
     cancer_types = ['PanCancer', 'Breast', 'Cervical', 'Colorectal', 'Gastric', 'HeadNeck', 'Leukemia',
                     'Lung', 'Lymphoma', 'Melanoma', 'Myeloma', 'Ovarian', 'Pancreatic', 'Renal']
@@ -202,14 +257,33 @@ def report_CTRPv2_correlation(data_dir: str, outfile: str, corr_method='pearson'
 
 
 def main():
+    plt.style.use('env/publication.mplstyle')
+    
     config = load_config()
 
     data_dir = config['cell_line']['data_dir']
     table_dir = config['cell_line']['table_dir']
+    fig_dir = config['cell_line']['fig_dir']
     corr_method = config['cell_line']['corr_method']
+    
     report_CTRPv2_correlation(data_dir, 
                               f'{table_dir}/CTRPv2_pairwise_{corr_method}_correlation_distributions.csv',
                               corr_method=corr_method)
+
+    # example plots - correlation distribution
+    pairwise_corr = prepare_ctrp_agg_data(data_dir, cancer_type='Colorectal', 
+                                          drugA_setname='chemo', drugB_setname='targeted',
+                                          corr_method=corr_method)
+    _, avg, _, _, _ = calc_corr_dist_summary_stats(pairwise_corr)
+    fig = plot_correlation_distribution(pairwise_corr, avg)
+    fig.savefig(f'{fig_dir}/Colorectal_chemo_vs_targeted_corr_dist.pdf', 
+                bbox_inches='tight')
+
+    # example plots - correlation one vs. one
+    fig = plot_correlation_one_vs_one(data_dir, 'Breast', 'Lapatinib', '5-Fluorouracil', 
+                                      corr_method=corr_method)
+    fig.savefig(f'{fig_dir}/Breast_Lapatinib_vs_5-Fluorouracil.pdf',
+                bbox_inches='tight')
 
 
 if __name__ == '__main__':
