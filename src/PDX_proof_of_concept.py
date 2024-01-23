@@ -236,7 +236,7 @@ def corr_AB_vs_corr_A_deltaB(dat: pd.DataFrame) -> pd.DataFrame:
     return r_df
 
 
-def plot_corr_AB_vs_corr_A_deltaB(data: pd.DataFrame) -> plt.figure:
+def plot_corr_AB_vs_corr_A_deltaB(data: pd.DataFrame) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(3, 3))
     sns.scatterplot(x='r_BestAvgRes', y='r_A_vs_deltaB', data=data, ax=ax)
     ax.set_xlim(-1, 1)
@@ -369,26 +369,7 @@ def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt
     return result_df, fig
 
 
-def plot_correlation_benefit_comparison_3lineplot(result_df: pd.DataFrame) -> plt.Figure:
-    melted = pd.melt(result_df,
-                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
-                     value_vars=['RMSE_r_BestAvgRes', 'RMSE_r_A_deltaB', 'RMSE_r_Highest'])
 
-    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
-        melted['Combination'] + ':|:' + melted['Effect Drug']
-
-    melted.loc[:, 'variable'] = pd.Categorical(melted['variable'],
-                                               categories=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'],
-                                               ordered=True)
-
-    fig, ax = plt.subplots(figsize=(3, 4))
-    sns.pointplot(melted, x='variable', y='value', hue='id',
-                  ax=ax)
-    ax.set_xticklabels(['A_deltaB', 'BestAvgResponse', 'High'])
-    ax.set_xlabel('Correlation')
-    ax.set_ylabel('RMSE (days)')
-    ax.legend().remove()
-    
     return fig
 
 
@@ -408,53 +389,6 @@ def plot_correlation_benefit_comparison_2lineplot(result_df: pd.DataFrame) -> pl
     ax.set_xticklabels(['Visual\nAppearance', 'Inference'])
     ax.set_ylabel('Error (%)')
 
-    return fig
-
-
-def plot_correlation_benefit_comparison_3boxplot(result_df: pd.DataFrame) -> plt.Figure:
-    melted = pd.melt(result_df,
-                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
-                     value_vars=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'])
-
-    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
-        melted['Combination'] + ':|:' + melted['Effect Drug']
-
-    melted.loc[:, 'variable'] = pd.Categorical(melted['variable'],
-                                            categories=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'],
-                                            ordered=True)
-    
-    fig, ax = plt.subplots(figsize=(3, 4))
-    sns.boxplot(melted, x='variable', y='value',
-                ax=ax)
-    sns.stripplot(melted, x='variable', y='value',
-                  ax=ax)
-    ax.set_xticklabels(['A_deltaB', 'BestAvgResponse', 'High'])
-    ax.set_xlabel('Correlation')
-    ax.set_ylabel('RMSE (days)')
-
-    return fig
-
-
-def plot_correlation_benefit_comparison_2boxplot(result_df: pd.DataFrame) -> plt.Figure:
-    melted = pd.melt(result_df,
-                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
-                     value_vars=['RMSE_r_BestAvgRes', 'RMSE_r_Highest'])
-
-    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
-        melted['Combination'] + ':|:' + melted['Effect Drug']
-    
-    stat, p = wilcoxon(result_df['RMSE_r_Highest'], 
-                       result_df['RMSE_r_BestAvgRes'])
-
-    fig, ax = plt.subplots(figsize=(3, 4))
-    sns.boxplot(melted, x='variable', y='value',
-                ax=ax)
-    sns.stripplot(melted, x='variable', y='value',
-                  ax=ax)
-    ax.set_xticklabels(['BestAvgResponse', 'High'])
-    ax.set_xlabel('Correlation')
-    ax.set_ylabel('RMSE (days)')
-    ax.set_title(f'two-sided Wilcoxon test (p={p:.2f})')
     return fig
 
 

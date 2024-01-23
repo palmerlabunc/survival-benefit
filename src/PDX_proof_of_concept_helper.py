@@ -1,7 +1,10 @@
 import pandas as pd
 import numpy as np
+from scipy.stats import wilcoxon
 from lifelines import KaplanMeierFitter
-from typing import Collection, Tuple
+from typing import Collection, Tuple, Mapping
+import matplotlib.pyplot as plt
+import seaborn as sns
 from utils import get_cox_results
 from survival_benefit.survival_benefit_class import SurvivalBenefit
 from survival_benefit.utils import interpolate
@@ -111,7 +114,7 @@ def get_km_curve(event_df: pd.DataFrame, time_col: str, event_col: str) -> pd.Da
     return km_df
 
 
-def make_event_dataframe_dict_mono(dat: pd.DataFrame, logrank: pd.DataFrame) -> dict[(str, str), pd.DataFrame]:
+def make_event_dataframe_dict_mono(dat: pd.DataFrame, logrank: pd.DataFrame) -> Mapping[(str, str), pd.DataFrame]:
     """Make event dataframe dictionary with keys (tumor, drug) for monotherapy vs. untreated.
 
     Args:
@@ -135,7 +138,7 @@ def make_event_dataframe_dict_mono(dat: pd.DataFrame, logrank: pd.DataFrame) -> 
     return df_dict
 
 
-def make_event_dataframe_dict_combo(dat: pd.DataFrame, logrank: pd.DataFrame, strict_censoring=False) -> dict[(str, str), pd.DataFrame]:
+def make_event_dataframe_dict_combo(dat: pd.DataFrame, logrank: pd.DataFrame, strict_censoring=False) -> Mapping[(str, str), pd.DataFrame]:
     """Make event dataframe dictionary with keys (tumor, combination) for combination vs. monotherapies (both).
 
     Args:
@@ -328,3 +331,72 @@ def added_benefit_event_table(event_df: pd.DataFrame, control_drug_idx: int) -> 
     df.loc[:, 'E_benefit'] = df['E_comb']
 
     return df[['T_benefit', 'E_benefit']]
+
+##### LEGACY FUNCTIONS (NO LONGER USED) #####
+
+def plot_correlation_benefit_comparison_3lineplot(result_df: pd.DataFrame) -> plt.Figure:
+    melted = pd.melt(result_df,
+                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
+                     value_vars=['RMSE_r_BestAvgRes', 'RMSE_r_A_deltaB', 'RMSE_r_Highest'])
+
+    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
+        melted['Combination'] + ':|:' + melted['Effect Drug']
+
+    melted.loc[:, 'variable'] = pd.Categorical(melted['variable'],
+                                               categories=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'],
+                                               ordered=True)
+
+    fig, ax = plt.subplots(figsize=(3, 4))
+    sns.pointplot(melted, x='variable', y='value', hue='id',
+                  ax=ax)
+    ax.set_xticklabels(['A_deltaB', 'BestAvgResponse', 'High'])
+    ax.set_xlabel('Correlation')
+    ax.set_ylabel('RMSE (days)')
+    ax.legend().remove()
+    
+
+def plot_correlation_benefit_comparison_3boxplot(result_df: pd.DataFrame) -> plt.Figure:
+    melted = pd.melt(result_df,
+                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
+                     value_vars=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'])
+
+    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
+        melted['Combination'] + ':|:' + melted['Effect Drug']
+
+    melted.loc[:, 'variable'] = pd.Categorical(melted['variable'],
+                                            categories=['RMSE_r_A_deltaB', 'RMSE_r_BestAvgRes', 'RMSE_r_Highest'],
+                                            ordered=True)
+    
+    fig, ax = plt.subplots(figsize=(3, 4))
+    sns.boxplot(melted, x='variable', y='value',
+                ax=ax)
+    sns.stripplot(melted, x='variable', y='value',
+                  ax=ax)
+    ax.set_xticklabels(['A_deltaB', 'BestAvgResponse', 'High'])
+    ax.set_xlabel('Correlation')
+    ax.set_ylabel('RMSE (days)')
+
+    return fig
+
+
+def plot_correlation_benefit_comparison_2boxplot(result_df: pd.DataFrame) -> plt.Figure:
+    melted = pd.melt(result_df,
+                     id_vars=['Tumor Type', 'Combination', 'Effect Drug'],
+                     value_vars=['RMSE_r_BestAvgRes', 'RMSE_r_Highest'])
+
+    melted.loc[:, 'id'] = melted['Tumor Type'] + ':|:' + \
+        melted['Combination'] + ':|:' + melted['Effect Drug']
+    
+    stat, p = wilcoxon(result_df['RMSE_r_Highest'], 
+                       result_df['RMSE_r_BestAvgRes'])
+
+    fig, ax = plt.subplots(figsize=(3, 4))
+    sns.boxplot(melted, x='variable', y='value',
+                ax=ax)
+    sns.stripplot(melted, x='variable', y='value',
+                  ax=ax)
+    ax.set_xticklabels(['BestAvgResponse', 'High'])
+    ax.set_xlabel('Correlation')
+    ax.set_ylabel('RMSE (days)')
+    ax.set_title(f'two-sided Wilcoxon test (p={p:.2f})')
+    return fig
