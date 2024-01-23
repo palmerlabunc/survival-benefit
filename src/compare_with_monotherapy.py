@@ -198,7 +198,7 @@ def plot_compare_monotherapy_added_benefit_each_combo(input_sheet: pd.DataFrame,
                                                               target_deltat=target_deltat, 
                                                               high_deltat=high_deltat)
 
-        ax.set_ylim(0, 100)
+        
         ax.set_xlim(0, assess_tmax)
         if i == 0:
             ax.legend()
@@ -278,13 +278,14 @@ def plot_rmse_lineplot(data: pd.DataFrame) -> plt.Figure:
         plt.figure: figure containing line plot of RMSE values
     """
     stat, p = wilcoxon(data['experimental_corr_rmse'], data['high_corr_rmse'])
-    
+    n = data.shape[0]
+
     fig, ax = plt.subplots(figsize=(1.2, 1.5))
     for i in range(data.shape[0]):
         ax.plot([0, 1], 
                 [data.at[i, 'high_corr_rmse'], data.at[i, 'experimental_corr_rmse']], 
                 marker='o', color='k', markersize=3, linewidth=0.75)
-    ax.set_title(f'Wilcoxon p={p:.2e}')
+    ax.set_title(f'Wilcoxon p={p:.1e} (n={n})')
     ax.set_xlim(-0.5, 1.5)
     ax.set_xticks([0, 1])
     ax.set_xticklabels(['Visual\nAppearance', 'Inference'])
@@ -303,6 +304,8 @@ def plot_monotherapy_added_benefit_gini_scatterplot(data: pd.DataFrame, color_di
         plt.figure: figure containing scatter plot of Gini values
     """
     r, p = pearsonr(data['monotherapy_gini'], data['experimental_corr_gini'])
+    n = data.shape[0]
+
     fig, ax = plt.subplots(figsize=(1.5, 1.5))
     
     sns.scatterplot(x='monotherapy_gini', y='experimental_corr_gini', 
@@ -315,7 +318,7 @@ def plot_monotherapy_added_benefit_gini_scatterplot(data: pd.DataFrame, color_di
     ax.set_ylim(0, 1)
     ax.set_xticks([0, 0.5, 1])
     ax.set_yticks([0, 0.5, 1])
-    ax.set_title(f'Pearsonr={r:.2f}, p={p:.2e}')
+    ax.set_title(f'Pearsonr={r:.2f}, p={p:.1e} (n={n})')
     ax.set_xlabel('Monotherapy Gini coefficient')
     ax.set_ylabel('Inference Gini coefficient')
     ax.get_legend().remove()
@@ -325,13 +328,14 @@ def plot_monotherapy_added_benefit_gini_scatterplot(data: pd.DataFrame, color_di
 def main():
     plt.style.use('env/publication.mplstyle')
     color_dict = load_config()['colors']
+    
     config = load_config()['single_agent']
     sheet = config['metadata_sheet']
     data_dir = config['data_dir']
     pred_dir = f"{config['table_dir']}/predictions"
     fig_dir = config['fig_dir']
 
-    indf = pd.read_csv(sheet)
+    indf = pd.read_csv(sheet, header=0, index_col=None)
     
     compare_df = compare_monotherapy_added_benefit(indf, data_dir, pred_dir)
     compare_df.to_csv(f'{config["table_dir"]}/compare_monotherapy_added_benefit.csv', index=False)
@@ -340,6 +344,11 @@ def main():
     indiv_combo_plot.savefig(f'{fig_dir}/compare_monotherapy_added_benefit_each_combo.pdf',
                              bbox_inches='tight')
     
+    example_indf = indf[indf['Combination'] == config['example_combo']]
+    example_combo_plot = plot_compare_monotherapy_added_benefit_each_combo(example_indf, data_dir, pred_dir, color_dict)
+    example_combo_plot.savefig(f'{fig_dir}/compare_monotherapy_added_benefit_example_combo.pdf',
+                               bbox_inches='tight')
+
     rmse_plot = plot_rmse_lineplot(compare_df)
     rmse_plot.savefig(f'{fig_dir}/compare_monotherapy_added_benefit_rmse.pdf',
                       bbox_inches='tight')
