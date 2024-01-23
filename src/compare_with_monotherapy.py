@@ -10,48 +10,9 @@ from survival_benefit.survival_data_class import SurvivalData
 from survival_benefit.survival_benefit_class import SurvivalBenefit
 from survival_benefit.utils import interpolate
 import warnings
-from utils import load_config
+from utils import load_config, set_figure_size_dim
 
 warnings.filterwarnings("ignore")
-
-def run_survival_benefit_analysis(input_sheet: pd.DataFrame, data_dir: str, pred_dir: str):
-    """Run SurvivalBenefit analysis for each combination for experimental correlation
-    and high correlation.
-
-    Args:
-        input_sheet (pd.DataFrame): input sheet containing combination, control, and correlation
-        data_dir (str): directory where all survival data are stored
-        pred_dir (str): directory where the SurvivalBenefit analysis results are stored
-    """
-    indf = input_sheet
-    
-    for i in indf.index:
-        name_ctrl = indf.at[i, 'Control']
-        name_ab = indf.at[i, 'Combination']
-        corr = indf.at[i, 'Corr']  # experimental spearman correlation value
-
-        df_ctrl = pd.read_csv(f'{data_dir}/{name_ctrl}.csv',
-                            header=0, index_col=False)
-        df_ab = pd.read_csv(f'{data_dir}/{name_ab}.csv',
-                            header=0, index_col=False)
-
-        sb = SurvivalBenefit(df_ctrl, df_ab, 
-                            f'{data_dir}/{name_ctrl}', 
-                            f'{data_dir}/{name_ab}', 
-                            outdir=pred_dir,
-                            out_name=name_ab,
-                            save_mode=True)
-        
-        if sb.atrisk is not None:
-            print(name_ab)
-        sb.compute_benefit_at_corr(corr, use_bestmatch=True)
-        sb.save_benefit_df()
-        sb.save_summary_stats()
-
-        sb.compute_benefit_at_corr(1, use_bestmatch=True)
-        sb.save_benefit_df()
-        sb.save_summary_stats()
-
 
 def get_valid_deltat(dirname: str, corr: float) -> np.ndarray[float]:
     """Get valid delta_t values for a given correlation parameter value.
