@@ -2,12 +2,9 @@ from pathlib import Path
 from multiprocessing import Pool
 import shutil
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+import argparse
 import warnings
-import os
-import glob
+import matplotlib.pyplot as plt
 from survival_benefit.survival_benefit_class import SurvivalBenefit
 from utils import load_config
 
@@ -67,11 +64,11 @@ def compute_benefit_at_experimental_corr(data_dir: str, control_prefix: str, com
         survival_benefit.compute_benefit_at_corr(corr, use_bestmatch=True)
         
         survival_benefit.plot_compute_benefit_sanity_check(save=True)
-        
+        plt.close()
         survival_benefit.plot_t_delta_t_corr(save=True)
-        
+        plt.close()
         survival_benefit.plot_benefit_distribution(save=True)
-        
+        plt.close()
         survival_benefit.save_summary_stats()
         
         survival_benefit.save_benefit_df()
@@ -95,6 +92,8 @@ def compute_benefit_at_corr_for_all_main_combo(config: dict, n_process: int = 4)
     out_dir = config['table_dir'] + '/predictions'
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     # prepare arguments
+    if 'Processed Path' not in input_sheet.columns:
+        input_sheet.loc[:, 'Processed Path'] = config['data_dir']
     input_sheet.loc[:, 'Outdir'] = out_dir
     args_arr = input_sheet[['Processed Path', 'Control', 'Combination', 'Corr', 'Outdir']].values
     
@@ -115,6 +114,8 @@ def compute_benefit_at_highest_corr_for_all_main_combo(config: dict, n_process: 
     out_dir = config['table_dir'] + '/predictions'
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     # prepare arguments
+    if 'Processed Path' not in input_sheet.columns:
+        input_sheet.loc[:, 'Processed Path'] = config['data_dir']
     input_sheet.loc[:, 'Outdir'] = out_dir
     args_arr = input_sheet[['Processed Path', 'Control', 'Combination', 'Corr', 'Outdir']].values
     args_arr[:, 3] = 1  # set desired correlation to 1
@@ -125,9 +126,20 @@ def compute_benefit_at_highest_corr_for_all_main_combo(config: dict, n_process: 
 
 def main():
     config = load_config()
-    copy_trial_files_to_data_dir(config['main_combo'])
-    compute_benefit_at_corr_for_all_main_combo(config['main_combo'], n_process=8)
-    compute_benefit_at_highest_corr_for_all_main_combo(config['main_combo'], n_process=8)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset', type=str, 
+                        help='Dataset to use (main_combo, biomarker, single_agent)')
+    args = parser.parse_args()
+
+    if args.dataset not in ['main_combo', 'biomarker', 'single_agent']:
+        raise ValueError('Invalid dataset name.')
+    
+    if args.dataset in ['main_combo', 'single_agent']:
+        compute_benefit_at_highest_corr_for_all_main_combo(config[args.dataset], n_process=8)
+          
+    compute_benefit_at_corr_for_all_main_combo(config[args.dataset], n_process=8)
+
 
 
 if __name__ == '__main__':
