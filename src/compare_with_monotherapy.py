@@ -104,7 +104,7 @@ def make_label(name: str) -> str:
         drugB = drugB.replace(key, dictionary[key])
 
 
-    return f"{cancer} {drugA}+{drugB}\n({author} et al. {year})"
+    return f"{cancer}\n{drugA}+{drugB}\n({author} et al. {year})"
 
 
 def plot_compare_monotherapy_added_benefit_one_combo(ax: plt.Axes, monotherapy: pd.DataFrame,
@@ -137,6 +137,7 @@ def plot_compare_monotherapy_added_benefit_one_combo(ax: plt.Axes, monotherapy: 
                 label='Visual Appearance',
                 linewidth=1.2)
     
+    tmax = np.max([monotherapy['Time'].max(), target_deltat.max(), high_deltat.max()])
     ax.set_ylim(0, 105)
     ax.set_yticks([0, 50, 100])
     ax.set_xticks(get_xticks(tmax, metric='months'))
@@ -224,8 +225,9 @@ def compare_monotherapy_added_benefit(input_sheet: pd.DataFrame, data_dir: str, 
     indf = input_sheet
     n = 500
     compare_df = pd.DataFrame(index=indf.index, 
-                        columns=['Combination', 'experimental_corr_rmse', 'high_corr_rmse',
-                                 'monotherapy_gini', 'experimental_corr_gini', 'high_corr_gini'])
+                              columns=['Combination', 'N_experimental', 'N_control', 'N_combination', 
+                                       'experimental_corr_rmse', 'high_corr_rmse',
+                                       'monotherapy_gini', 'experimental_corr_gini', 'high_corr_gini'])
     for i in indf.index:
 
         name_exp = indf.at[i, 'Experimental']
@@ -260,6 +262,10 @@ def compare_monotherapy_added_benefit(input_sheet: pd.DataFrame, data_dir: str, 
         high_rmse = mean_squared_error(exp_surv, high_surv, squared=False)
 
         compare_df.at[i, 'Combination'] = name_ab
+        compare_df.at[i, 'N_experimental'] = indf.at[i, 'N_experimental']
+        compare_df.at[i, 'N_control'] = indf.at[i, 'N_control']
+        compare_df.at[i, 'N_combination'] = indf.at[i, 'N_combination']
+
         compare_df.at[i, 'experimental_corr_rmse'] = target_rmse
         compare_df.at[i, 'high_corr_rmse'] = high_rmse
         
@@ -280,17 +286,19 @@ def plot_rmse_lineplot(data: pd.DataFrame) -> plt.Figure:
         plt.figure: figure containing line plot of RMSE values
     """
     stat, p = wilcoxon(data['experimental_corr_rmse'], data['high_corr_rmse'])
-    n = data.shape[0]
-
+    n_combo = data.shape[0]
+    n_patients = np.sum([data['N_combination'].sum(), data['N_experimental'].sum(), data['N_control'].sum()])
     fig, ax = plt.subplots(figsize=(1.2, 1.5))
     for i in range(data.shape[0]):
         ax.plot([0, 1], 
                 [data.at[i, 'high_corr_rmse'], data.at[i, 'experimental_corr_rmse']], 
                 marker='o', color='k', markersize=3, linewidth=0.75)
-    ax.set_title(f'Wilcoxon p={p:.1e} (n={n})')
+    
+    ax.set_title(f'Wilcoxon p={p:.1e}\n{n_combo} combinatons, {n_patients} patients')
     ax.set_xlim(-0.5, 1.5)
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(['Visual\nAppearance', 'Inference'])
+    ax.set_xticklabels(['Apparent', 'Inferred'])
+    ax.set_xlabel('Benefit')
     ax.set_ylabel('Error (%)')
     return fig
 

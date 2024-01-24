@@ -6,7 +6,7 @@ from scipy.stats import spearmanr, wilcoxon
 from lifelines import KaplanMeierFitter
 from typing import Tuple
 from PDXE_correlation import get_pdx_corr_data
-from utils import load_config, set_figure_size_dim
+from utils import load_config, set_figure_size_dim, get_xticks
 from PDX_proof_of_concept_helper import *
 import warnings
 
@@ -370,24 +370,22 @@ def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt
     return result_df, fig
 
 
-
-    return fig
-
-
 def plot_correlation_benefit_comparison_2lineplot(result_df: pd.DataFrame) -> plt.Figure:
     stat, p = wilcoxon(result_df['RMSE_r_Highest'], 
                        result_df['RMSE_r_BestAvgRes'])
-    n = result_df.shape[0]
+    n_combo = result_df.shape[0]
+    n_tumors = result_df['N'].sum()
     fig, ax = plt.subplots(figsize=(1.2, 1.5))
     for i in range(result_df.shape[0]):
         ax.plot([0, 1], 
                 [result_df.at[i, 'RMSE_r_Highest'], result_df.at[i, 'RMSE_r_BestAvgRes']], 
                 marker='o', color='k', 
                 markersize=3, linewidth=0.75)
-    ax.set_title(f'Wilcoxon p={p:.2e} (n={n})')
+    ax.set_title(f'Wilcoxon p={p:.1e}\n{n_combo} combinations, {n_tumors} tumors')
     ax.set_xlim(-0.5, 1.5)
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(['Visual\nAppearance', 'Inference'])
+    ax.set_xticklabels(['Apparent', 'Inferred'])
+    ax.set_xlabel('Benefit')
     ax.set_ylabel('Error (%)')
 
     return fig
