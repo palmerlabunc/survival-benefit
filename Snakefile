@@ -124,7 +124,8 @@ rule pdxe_anlaysis:
         "src/PDX_proof_of_concept_helper.py",
         "src/survival_benefit/survival_benefit_class.py",
         "src/survival_benefit/survival_data_class.py",
-        "env/publication.mplstyle"
+        "env/publication.mplstyle",
+        "src/utils.py"
     output:
         f"{config['PDX']['fig_dir']}/PDXE_combo_added_benefit_stripplot.pdf",
         f"{config['PDX']['table_dir']}/PDXE_combo_added_benefit_stripplot.source_data.csv",
@@ -133,13 +134,11 @@ rule pdxe_anlaysis:
         f"{config['PDX']['fig_dir']}/PDXE_corr_differences_scatterplot.pdf",
         f"{config['PDX']['table_dir']}/PDXE_corr_differences_scatterplot.source_data.csv",
         f"{config['PDX']['fig_dir']}/PDXE_actual_vs_high_corr_benefit_profiles.pdf",
-        f"{config['PDX']['fig_dir']}/PDXE_actual_vs_high_corr_{config['PDX']['delta_t']}_benefit_3lineplot.pdf",
         f"{config['PDX']['fig_dir']}/PDXE_actual_vs_high_corr_{config['PDX']['delta_t']}_benefit_2lineplot.pdf",
         f"{config['PDX']['table_dir']}/PDXE_actual_vs_high_corr_{config['PDX']['delta_t']}_benefit_3lineplot.source_data.csv",
         f"{config['PDX']['fig_dir']}/PDXE_paired_test_for_antagonism_lineplot.pdf",
         f"{config['PDX']['table_dir']}/PDXE_paired_test_for_antagonism_lineplot.source_data.csv",
-        f"{config['PDX']['fig_dir']}/PDXE_bootstrapping_test_for_antagonism_active_mono.pdf",
-        f"{config['PDX']['fig_dir']}/PDXE_bootstrapping_test_for_antagonism_inactive_mono.pdf",
+        f"{config['PDX']['fig_dir']}/PDXE_bootstrapping_test_for_antagonism.pdf",
     shell:
         "python src/PDX_proof_of_concept.py"
 
@@ -150,7 +149,8 @@ rule main_combo_analysis:
         "src/main_combo_analysis.py",
         "src/survival_benefit/survival_benefit_class.py",
         "src/survival_benefit/survival_data_class.py",
-        "env/publication.mplstyle"
+        "env/publication.mplstyle",
+        "src/utils.py"
     output:
         f"{config['main_combo']['fig_dir']}/Surrogate.gini_by_experimental_class_boxplot.pdf",
         f"{config['main_combo']['fig_dir']}/Surrogate.gini_histplot.pdf",
@@ -170,7 +170,8 @@ rule compare_with_monotherapy:
         "src/compare_with_monotherapy.py",
         "src/survival_benefit/survival_benefit_class.py",
         "src/survival_benefit/survival_data_class.py",
-        "env/publication.mplstyle"
+        "env/publication.mplstyle",
+        "src/utils.py"
     output:
         f"{config['single_agent']['table_dir']}/compare_monotherapy_added_benefit.csv",
         f"{config['single_agent']['fig_dir']}/compare_monotherapy_added_benefit_each_combo.pdf",
@@ -207,9 +208,9 @@ rule illustration:
         "env/publication.mplstyle"
     output:
         expand("{fig_dir}/sorted_by_A_corr_{corr}_with_weibull.pdf", 
-               fig_dir=config['example']['fig_dir'], corr=[0.3, 1]),
+               fig_dir=config['example']['fig_dir'], corr=[0, 1]),
         expand("{fig_dir}/sorted_by_AB_corr_{corr}_with_weibull.pdf", 
-               fig_dir=config['example']['fig_dir'], corr=[0.3, 1]),
+               fig_dir=config['example']['fig_dir'], corr=[0, 1]),
         f"{config['example']['fig_dir']}/two_arms.pdf"
     shell:
         "python src/illustrative_example.py"
