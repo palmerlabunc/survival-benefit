@@ -10,7 +10,7 @@ from survival_benefit.survival_data_class import SurvivalData
 from survival_benefit.survival_benefit_class import SurvivalBenefit
 from survival_benefit.utils import interpolate
 import warnings
-from utils import load_config, set_figure_size_dim
+from utils import load_config, set_figure_size_dim, get_xticks
 
 warnings.filterwarnings("ignore")
 
@@ -139,6 +139,7 @@ def plot_compare_monotherapy_added_benefit_one_combo(ax: plt.Axes, monotherapy: 
     
     ax.set_ylim(0, 105)
     ax.set_yticks([0, 50, 100])
+    ax.set_xticks(get_xticks(tmax, metric='months'))
     ax.set_xlabel('Added benefit (months)')
     ax.set_ylabel('Patients (%)')
     
@@ -200,6 +201,7 @@ def plot_compare_monotherapy_added_benefit_each_combo(input_sheet: pd.DataFrame,
 
         
         ax.set_xlim(0, assess_tmax)
+        ax.set_xticks(get_xticks(assess_tmax, metric='months'))
         if i == 0:
             ax.legend()
         ax.set_title(make_label(name_ab))

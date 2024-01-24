@@ -3,6 +3,7 @@ import pandas as pd
 from lifelines import CoxPHFitter
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import List, Tuple
 
 def load_config():
     file_path = 'config.yaml'
@@ -54,7 +55,8 @@ def set_figure_size_dim(n_axes: int = 1,
 
     if n_axes > 1:
         fig, axes = plt.subplots(nrow, ncol, 
-                                 figsize=(ncol*ax_width + 0.2, nrow*ax_height + 0.2), 
+                                 figsize=(ncol*ax_width + 0.2, nrow*ax_height + 0.2),
+                                 sharey=True, 
                                  layout='constrained')
     else:
         fig, axes = plt.subplots(figsize=(ax_width, ax_height))
@@ -64,3 +66,33 @@ def set_figure_size_dim(n_axes: int = 1,
     return fig, axes
 
 
+def get_xticks(tmax: float, metric='months') -> List[float]:
+    """Set x-axis limits and ticks.
+
+    Args:
+        tmax (float): Maximum time.
+        metric (str, optional): Metric (either months or days). Defaults to 'months'.
+    Returns:
+        List[float]: List of xticks.
+    """
+    if metric == 'months':
+        if tmax < 6:
+            return [0, 2, 4]
+        elif tmax >= 6 and tmax < 12:
+            step = 3
+        elif tmax >= 12 and tmax < 24:
+            step = 6
+        else:
+            step = 12
+     
+    elif metric == 'days':
+        if tmax < 100:
+            step = 20
+        elif tmax >=100 and tmax < 200:
+            step = 50
+        else:
+            step = 100
+    
+    max_tick = step * int(tmax / step) + 1
+    xticks = list(range(0, max_tick, step))
+    return xticks

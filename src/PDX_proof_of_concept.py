@@ -277,6 +277,7 @@ def plot_benefits(true_benefit_event_df: pd.DataFrame,
                 label='Visual Appearance')
     
     ax.set_xlim(0, tmax)
+    ax.set_xticks(get_xticks(tmax, metric='days'))
     ax.set_ylim(0, 105)
     ax.set_yticks([0, 50, 100])
     ax.set_xlabel('Added benefit (days)')
@@ -529,6 +530,7 @@ def plot_one_combo_example_barplot(dat: pd.DataFrame,
         ax.set_yticklabels(example_df.index)
 
     ax.set_xlim(0)
+    ax.set_xticks(get_xticks(tmax, metric='days'))
     ax.set_xlabel('Time to double (days)')
     ax.set_title(f'{tumor} {added_drug} + {control_drug}')
 
