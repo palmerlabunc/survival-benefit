@@ -167,11 +167,13 @@ def cumulative_distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.Data
                 color=sns.color_palette()[2], ax=ax)
     sns.ecdfplot(x='added_benefit', data=combo_active,
                 color=sns.color_palette()[3], ax=ax)
-    ax.set_xlabel('Added benefit (day)')
+    ax.set_xlabel('added benefit (day)')
     ax.set_ylabel('Cumulative density')
+    ax.set_xlim(-100, 0)
     ax.axvline(0, linestyle='--', color='k', alpha=0.5)
     ax.legend(labels=['All monotherapy', 'Active monotherapy',
-            'Inactive monotherapy', 'Successful combination'])
+             'Inactive monotherapy', 'Successful combination'],
+              bbox_to_anchor=(1.05, 1), loc='upper left')
     return fig
 
 
@@ -264,17 +266,18 @@ def plot_benefits(true_benefit_event_df: pd.DataFrame,
     ts = np.linspace(0, tmax, 500)
 
     ax.plot(ts, 100 * true_benefit_km.survival_function_at_times(ts),
-            color='k', linewidth=1.5, label='Groundtruth')
+            color='k', linewidth=1.5, label='True benefit of indvidual PDXs')
+    
     ax.plot(ts, 100 * inferred_benefit_km.survival_function_at_times(ts),
             color=color_dict['inference'], linewidth=1.2, 
-            label='Inference')
+            label='Inferred benefit')
     
     if visual_deltat is not None:
         visual_benefit_km = KaplanMeierFitter()
         visual_benefit_km.fit(visual_deltat)
         ax.plot(ts, 100 * visual_benefit_km.survival_function_at_times(ts),
                 color=color_dict['visual_appearance'], linewidth=1.2, 
-                label='Visual Appearance')
+                label='Apparent benefit')
     
     ax.set_xlim(0, tmax)
     ax.set_xticks(get_xticks(tmax, metric='days'))
@@ -293,7 +296,8 @@ def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt
     info = dat[['Model', 'Tumor Type', 'BRAF_mut', 'RAS_mut']].drop_duplicates().set_index('Model')
 
     n_combos = coxph_df.shape[0]
-    fig, axes = set_figure_size_dim(n_combos, ax_width=1.5, ax_height=1.5, max_cols=4)
+    fig, axes = set_figure_size_dim(n_combos, 
+                                    ax_width=1.5, ax_height=1.5, max_cols=4)
     ax_idx = 0
 
     for i in coxph_df.index:
@@ -393,31 +397,50 @@ def plot_correlation_benefit_comparison_2lineplot(result_df: pd.DataFrame) -> pl
 
 def bootstrapping_test_for_antagonism(combo_added_benefit: pd.DataFrame, 
                                       mono_added_benefit: pd.DataFrame, 
-                                      n_rep=10000) -> tuple[np.array, float, float]:
+                                      n_rep=10000) -> Tuple[np.array, float, float]:
     rng = np.random.default_rng(0)
-    antag_sum_arr = np.zeros(n_rep)
+    antag_mean_arr = np.zeros(n_rep)
     for run in range(n_rep):
         sampled_idx = rng.integers(0, len(mono_added_benefit), size=len(combo_added_benefit))
         mono_sampled = mono_added_benefit.loc[sampled_idx, 'added_benefit']
-        antag_sum = mono_sampled[mono_sampled < 0].sum()
-        antag_sum_arr[run] = antag_sum
+        neg_samples = mono_sampled[mono_sampled < 0]
+        antag_mean = neg_samples.sum() / neg_samples.shape[0]
+        antag_mean_arr[run] = antag_mean
 
-    comb_antag_sum = combo_added_benefit[combo_added_benefit['added_benefit'] < 0]['added_benefit'].sum()
-    null_mean = antag_sum_arr.mean()
-    diff = abs(null_mean - comb_antag_sum)
-    p = ((antag_sum_arr < null_mean - diff).sum() + (antag_sum_arr > null_mean + diff).sum()) / n_rep
-    return (antag_sum_arr, comb_antag_sum, p)
+    neg_benefit = combo_added_benefit[combo_added_benefit['added_benefit'] < 0]
+    comb_antag_mean = neg_benefit['added_benefit'].sum() / neg_benefit.shape[0]
+    null_mean = antag_mean_arr.mean()
+    diff = abs(null_mean - comb_antag_mean)
+    p = ((antag_mean_arr < null_mean - diff).sum() + (antag_mean_arr > null_mean + diff).sum()) / n_rep
+    return (antag_mean_arr, comb_antag_mean, p)
 
 
-def plot_boostrapping_distribution(antag_sum_arr: np.array, 
-                                   comb_antag_sum: float, 
-                                   p: float) -> plt.Figure:
-    sns.set_palette('deep')
-    fig, ax = plt.subplots(figsize=(3, 2))
-    sns.histplot(antag_sum_arr, ax=ax, stat='density')
-    ax.axvline(comb_antag_sum, color='k', linestyle='--')
-    ax.set_title(f'p = {p:.2f}')
-    ax.set_xlabel('Sum of negative added benefit (days)')
+def plot_boostrapping_distribution(antag_mean_arr: np.array, 
+                                   comb_antag_mean: float, 
+                                   p: float, 
+                                   label: str = None,
+                                   ax: plt.Axes = None) -> plt.Figure | plt.Axes:
+    if label == 'Active monotherapy':
+        color = sns.color_palette('deep')[1]
+    if label == 'Inactive monotherapy':
+        color = sns.color_palette('deep')[2]
+    else:
+        color = sns.color_palette('deep')[0]
+    
+    ax_given = True
+    if ax is None:
+        ax_given = False
+        fig, ax = plt.subplots(figsize=(3, 2))
+    
+    sns.histplot(antag_mean_arr, ax=ax, stat='density', 
+                 label=f'Null from {label} p={p:.1e}',
+                 color=color)
+    ax.axvline(comb_antag_mean, 
+               color='k', linestyle='--',
+               label='Successful combination')
+    ax.set_xlabel('Mean negative benefit (days)')
+    if ax_given:
+        return ax
     return fig
 
 
@@ -485,6 +508,7 @@ def plot_one_combo_example_barplot(dat: pd.DataFrame,
         example_df = merged.iloc[:3, :]
 
     fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    
     # Version 1: have some space inbetween for ...
     if version == 1:
         for i in range(example_df.shape[0]):
@@ -494,14 +518,20 @@ def plot_one_combo_example_barplot(dat: pd.DataFrame,
             if i > 0:
                 i += 2
             ax.plot([0, t_control], [i+0.2, i+0.2], 
-                    linewidth=5, 
-                    color=COLOR_DICT['control_arm'])
+                    linewidth=5,
+                    alpha=0.8,
+                    color=COLOR_DICT['control_arm'],
+                    solid_capstyle='butt')
             ax.plot([t_control, t_combo], [i+0.2, i+0.2], 
                     linewidth=5,
-                    color=COLOR_DICT['added_benefit'])
+                    alpha=0.5,
+                    color='k',
+                    solid_capstyle='butt')
             ax.plot([0, t_combo], [i-0.2, i-0.2], 
                     linewidth=5,
-                    color=COLOR_DICT['combination_arm'])
+                    color=COLOR_DICT['combination_arm'],
+                    alpha=0.8,
+                    solid_capstyle='butt')
 
         ax.set_ylim(-0.5, 4.5)
         ax.set_yticks(range(5))
@@ -516,21 +546,32 @@ def plot_one_combo_example_barplot(dat: pd.DataFrame,
             
             ax.plot([0, t_control], [i+0.15, i+0.15], 
                     linewidth=7,
-                    color=COLOR_DICT['control_arm'])
+                    color=COLOR_DICT['control_arm'],
+                    alpha=0.8,
+                    label=control_drug,
+                    solid_capstyle='butt')
             ax.plot([t_control, t_combo], [i+0.15, i+0.15], 
                     linewidth=7,
-                    color=COLOR_DICT['added_benefit'])
+                    color='k',
+                    alpha=0.5,
+                    label=f'benefit of {added_drug}',
+                    solid_capstyle='butt')
             ax.plot([0, t_combo], [i-0.15, i-0.15], 
                     linewidth=7,
-                    color=COLOR_DICT['combination_arm'])
+                    color=COLOR_DICT['combination_arm'],
+                    alpha=0.8,
+                    label=f'{control_drug} + {added_drug}',
+                    solid_capstyle='butt')
             ax.set_ylim(-0.5, 2.5)
         ax.set_yticks(range(3))
         ax.set_yticklabels(example_df.index)
 
-    ax.set_xlim(0)
+    tmax = example_df['Time_combo'].max()
+    ax.set_xlim(0, tmax)
     ax.set_xticks(get_xticks(tmax, metric='days'))
     ax.set_xlabel('Time to double (days)')
     ax.set_title(f'{tumor} {added_drug} + {control_drug}')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 
     return fig
 
@@ -564,17 +605,23 @@ def test_antagonism_and_correlation(dat: pd.DataFrame, pdx_config: Mapping):
                      index=False)
 
     # Testing for antagonism - bootstrapping test
-    active_antag_sum_arr, comb_antag_sum, p= bootstrapping_test_for_antagonism(comb_active, mono_active)
-    fig8a = plot_boostrapping_distribution(active_antag_sum_arr, comb_antag_sum, p)
+    active_antag_mean_arr, comb_antag_mean, p_active= bootstrapping_test_for_antagonism(comb_active, 
+                                                                               mono_active)
+    inactive_antag_mean_arr, comb_antag_mean, p_inactive = bootstrapping_test_for_antagonism(comb_active, 
+                                                                                  mono_inactive)
+    fig8, ax = plt.subplots(figsize=(2, 2))
 
-    inactive_antag_sum_arr, comb_antag_sum, p = bootstrapping_test_for_antagonism(comb_active, mono_inactive)
-    fig8b = plot_boostrapping_distribution(inactive_antag_sum_arr, comb_antag_sum, p)
-
-    fig8a.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_active_mono.pdf', 
-                  bbox_inches='tight')
-    fig8b.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism_inactive_mono.pdf', 
-                  bbox_inches='tight')
+    ax = plot_boostrapping_distribution(active_antag_mean_arr, comb_antag_mean, p_active,
+                                        label='Active monotherapy',
+                                        ax=ax)
+    ax = plot_boostrapping_distribution(inactive_antag_mean_arr, comb_antag_mean, p_inactive,
+                                        label='Inactive monotherapy',
+                                        ax=ax)
     
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    fig8.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism.pdf', 
+                 bbox_inches='tight')
+
     # Figure 1 - stripplot of added benefit
     fig1_data = prepare_dataframe_for_stripplot(dat)
     fig1 = stripplot_added_benefit(fig1_data)
@@ -623,9 +670,9 @@ def one_combo_example(dat: pd.DataFrame, pdx_config: Mapping):
                          bbox_inches='tight')
     
     fig_barplot2 = plot_one_combo_example_barplot(dat, pdx_config['example_tumor'],
-                                                    pdx_config['example_control'], 
-                                                    pdx_config['example_experimental'], 
-                                                    version=2)
+                                                  pdx_config['example_control'], 
+                                                  pdx_config['example_experimental'], 
+                                                  version=2)
     fig_barplot2.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_benefit_profiles_one_combo_barplot2.pdf',
                          bbox_inches='tight')
 
@@ -643,6 +690,9 @@ def compare_inferred_apparent_to_actual_benefit(dat: pd.DataFrame, pdx_config: M
     fig6_2lineplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2lineplot.pdf', 
                            bbox_inches='tight')
     
+    fig56_data.to_csv(f'{table_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.source_data.csv',
+                    index=False)
+
     # Figure 6 - boxplot/lineplot actual benefit vs. inferred benefit RMSE by correlation
     #fig6_3lineplot = plot_correlation_benefit_comparison_3lineplot(fig56_data)
     #fig6_3lineplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.pdf', 
@@ -655,8 +705,7 @@ def compare_inferred_apparent_to_actual_benefit(dat: pd.DataFrame, pdx_config: M
     #fig6_2boxplot = plot_correlation_benefit_comparison_2boxplot(fig56_data)
     #fig6_2boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2boxplot.pdf',
     #                      bbox_inches='tight')
-    #fig56_data.to_csv(f'{table_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_3lineplot.source_data.csv',
-    #                  index=False)
+
 
 
 def main():

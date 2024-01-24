@@ -114,7 +114,7 @@ def get_km_curve(event_df: pd.DataFrame, time_col: str, event_col: str) -> pd.Da
     return km_df
 
 
-def make_event_dataframe_dict_mono(dat: pd.DataFrame, logrank: pd.DataFrame) -> Mapping[(str, str), pd.DataFrame]:
+def make_event_dataframe_dict_mono(dat: pd.DataFrame, logrank: pd.DataFrame) -> Mapping[Tuple[str, str], pd.DataFrame]:
     """Make event dataframe dictionary with keys (tumor, drug) for monotherapy vs. untreated.
 
     Args:
@@ -138,7 +138,7 @@ def make_event_dataframe_dict_mono(dat: pd.DataFrame, logrank: pd.DataFrame) -> 
     return df_dict
 
 
-def make_event_dataframe_dict_combo(dat: pd.DataFrame, logrank: pd.DataFrame, strict_censoring=False) -> Mapping[(str, str), pd.DataFrame]:
+def make_event_dataframe_dict_combo(dat: pd.DataFrame, logrank: pd.DataFrame, strict_censoring=False) -> Mapping[Tuple[str, str], pd.DataFrame]:
     """Make event dataframe dictionary with keys (tumor, combination) for combination vs. monotherapies (both).
 
     Args:

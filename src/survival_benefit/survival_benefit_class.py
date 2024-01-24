@@ -828,7 +828,6 @@ class SurvivalBenefit:
 
         return atrisk
 
-
     def __align_tmax(self):
         """Align maximum time to be the minimum of the maximum follow-up times of the two curves.
         """

@@ -187,19 +187,27 @@ def plot_correlation_one_vs_one(data_dir: str, cancer_type: str,
                         columns='Harmonized_Compound_Name')
     
     fig, ax = plt.subplots(figsize=(1.5, 1.5))
-    sns.scatterplot(x=drugA, y=drugB, data=df, ax=ax)
+    sns.scatterplot(x=drugA, y=drugB, data=df, s=15, ax=ax)
     ax.set_xlabel(f'{drugA} AUC')
     ax.set_ylabel(f'{drugB} AUC')
-    ax.set_xlim(0.4, 1)
-    ax.set_ylim(0.4, 1)
+    ax.set_xlim(0.3, 1)
+    ax.set_ylim(0.3, 1)
     
     ax.set_xticks([0.4, 0.6, 0.8, 1])
     ax.set_yticks([0.4, 0.6, 0.8, 1])
 
     r = get_CTRPv2_one_vs_one_correlation(data_dir, cancer_type, drugA, drugB, 
                                           corr_method=corr_method)
+    n = df.shape[0]
+
+    ax.set_title(f'{n} {cancer_type} cancer cell lines')
     
-    ax.set_title(f'{cancer_type} {corr_method} r={r:.2f}')
+    if corr_method == 'pearson':
+        ax.text(0.05, 0.05, f'r = {r:.2f}',
+                transform=ax.transAxes)
+    elif corr_method == 'spearman':
+        ax.text(0.05, 0.05, r'$\rho$' + f' = {r:.2f}', 
+                transform=ax.transAxes)
     return fig
 
 
