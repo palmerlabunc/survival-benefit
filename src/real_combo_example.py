@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
 import seaborn as sns
 from typing import Mapping
 from survival_benefit.survival_benefit_class import SurvivalBenefit
@@ -14,7 +15,10 @@ def plot_two_arms(color_dict: Mapping, sb: SurvivalBenefit = None,
                   control_prefix: str = None, 
                   combo_prefix: str = None,
                   control_name: str = None,
-                  combo_name: str = None
+                  combo_name: str = None,
+                  horizontal_extension = False,
+                  aspect_ratio: float = 1.5,
+                  legend = True,
                   ) -> plt.Figure:
     """Provide either the SurvivalBenefit object or the data_dir, control_prefix, and combo_prefix.
 
@@ -24,12 +28,18 @@ def plot_two_arms(color_dict: Mapping, sb: SurvivalBenefit = None,
         data_dir (str, optional): _description_. Defaults to None.
         control_prefix (str, optional): _description_. Defaults to None.
         combo_prefix (str, optional): _description_. Defaults to None.
+        control_name (str, optional): _description_. Defaults to None.
+        combo_name (str, optional): _description_. Defaults to None.
+        horizontal_extension (bool, optional): Show hatches for horizontal extension. Defaults to False.
+        aspect_ratio (float, optional): the ratio of width to height. Height is 1. If None, use FIGSIZE. Defaults to 1.5.
+        legend (bool, optional): Show legend. Defaults to True.
 
     Returns:
         plt.Figure: _description_
     """
     width, height = FIGSIZE
-    width = width * 1.5
+    if aspect_ratio is not None:
+        width = height * aspect_ratio
     fig, ax = plt.subplots(figsize=(width, height))
 
     if isinstance(sb, SurvivalBenefit):
@@ -54,17 +64,33 @@ def plot_two_arms(color_dict: Mapping, sb: SurvivalBenefit = None,
             color=color_dict['combination_arm'],
             label=combo_name)
     
-    ax.fill_betweenx(mono_data['Survival'],
-                        mono_data['Time'],
-                        comb_data['Time'],
-                        color=color_dict['added_benefit'],
-                        alpha=0.5,
-                        label='Added benefit')
-        
-        
+    if horizontal_extension:
+        face_color = to_rgba(color_dict['added_benefit'], alpha=0.5)
+        edge_color = 'darkorange'
+        ax.fill_betweenx(mono_data['Survival'],
+                         mono_data['Time'],
+                         comb_data['Time'],
+                         facecolor=face_color,
+                         label='Added benefit')
+        ax.fill_betweenx(mono_data['Survival'],
+                    mono_data['Time'],
+                    comb_data['Time'],
+                    facecolor='none',
+                    edgecolor=edge_color,
+                    hatch='---',
+                    label='Added benefit')
+    else:
+        ax.fill_betweenx(mono_data['Survival'],
+                         mono_data['Time'],
+                         comb_data['Time'],
+                         color=color_dict['added_benefit'],
+                         alpha=0.5,
+                         label='Added benefit')
+
     # legend outside of the plot on top
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.5), 
-              ncol=2, frameon=False)
+    if legend:
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.5), 
+                ncol=2, frameon=False)
     if isinstance(sb, SurvivalBenefit):
         ax.set_xlim(0, sb.tmax-1)
     else:
@@ -91,9 +117,9 @@ def plot_experimental_arm(filepath: str, first_scan: float = 0) -> plt.Figure:
     ax.plot('Time', 'Survival', 
             data=data,
             color='darkorange')
-    ax.set_xlim(0, 12)
+    ax.set_xlim(0, 18)
     ax.set_ylim(0, 105)
-    ax.set_xticks([0, 6, 12])
+    ax.set_xticks([0, 6, 12, 18])
     ax.set_yticks([0, 50, 100])
     if first_scan == 0:
         ax.set_xlabel('PFS (months)')
@@ -121,25 +147,44 @@ def main():
                          fig_format='pdf',
                          figsize=FIGSIZE)
     
+    # plot control and combination arm
     fig = plot_two_arms(color_dict, data_dir=data_dir, 
                         control_prefix=mono_prefix, 
                         combo_prefix=comb_prefix,
                         control_name='Capecitabine',
-                        combo_name='Capeicitabine + Lapatinib')
+                        combo_name='Capeicitabine + Lapatinib',
+                        aspect_ratio=None)
     
-    fig.savefig(f'{fig_dir}/{comb_prefix}.two_arms.pdf', bbox_inches='tight')
+    fig.savefig(f'{fig_dir}/{comb_prefix}.two_arms.pdf', 
+                bbox_inches='tight')
+
+    # plot control and combination arm. Fill between with hatches
+    # to show horizontal extension
+    fig = plot_two_arms(color_dict, data_dir=data_dir, 
+                        control_prefix=mono_prefix, 
+                        combo_prefix=comb_prefix,
+                        control_name='Capecitabine',
+                        combo_name='Capeicitabine + Lapatinib',
+                        horizontal_extension=True,
+                        aspect_ratio=None,
+                        legend=False)
     
+    fig.savefig(f'{fig_dir}/{comb_prefix}.two_arms_horizontal_extension.pdf', 
+                bbox_inches='tight')
+
+    # plot experimental monotherapy arm
     fig = plot_experimental_arm(f'{data_dir}/{expr_prefix}.csv')
     fig.savefig(f'{fig_dir}/{expr_prefix}.pdf', bbox_inches='tight')
 
+    # plot inferred benefit
     for corr in [0.25, 0.5, 1]:
         sb.compute_benefit_at_corr(corr, use_bestmatch=True)
         sb.save_benefit_df()
         fig, ax = sb.plot_benefit_distribution(simple=True, save=False)
         gini = sb.stats['Gini_coefficient']
         ax.set_xlabel(f"Benefit from Lapatinib (months)")
-        ax.set_xlim(0, 12)
-        ax.set_xticks([0, 6, 12])
+        ax.set_xlim(0, 18)
+        ax.set_xticks([0, 6, 12, 18])
         ax.set_yticks([0, 50, 100])
         ax.set_title(r'$\rho$ = {0:.2f}'.format(sb.corr_rho_actual))
         ax.text(0.5, 0.6, f'Gini = {gini:.2f}', transform=ax.transAxes)

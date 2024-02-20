@@ -296,8 +296,11 @@ def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt
     info = dat[['Model', 'Tumor Type', 'BRAF_mut', 'RAS_mut']].drop_duplicates().set_index('Model')
 
     n_combos = coxph_df.shape[0]
+    width, height = 1.5, 1.2
+
     fig, axes = set_figure_size_dim(n_combos, 
-                                    ax_width=1.5, ax_height=1.5, max_cols=4)
+                                    ax_width=width, ax_height=height, 
+                                    max_cols=4)
     ax_idx = 0
 
     for i in coxph_df.index:
@@ -363,8 +366,14 @@ def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt
             ax = plot_benefits(benefit_event_df, ax, COLOR_DICT,
                                inferred_deltat=r_bestavgres_benefit[DELTA_T],
                                visual_deltat=r_high_benefit[DELTA_T])
-            
+            if n_combos > 1:
+                ax.set_xlabel('')
+                ax.set_ylabel('')
             ax_idx += 1
+    
+    if n_combos > 1:
+        fig.supxlabel('Added benefit (days)')
+        fig.supylabel('PDX models (%)')
 
     columns = ['Tumor Type', 'Combination', 'Effect Drug', 'N', 'r_BestAvgRes', 'r_A_deltaB',
                'r_BestAvgRes_Actual', 'r_A_deltaB_Actual', 'r_Highest_Actual',

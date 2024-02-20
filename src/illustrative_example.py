@@ -88,7 +88,7 @@ def main():
     sb = SurvivalBenefit(mono_u, comb_u, 'A', 'A+B', n_patients, 
                          atrisk=None, save_mode=False)
     sb.set_tmax(30)
-    for corr in [0, 1]:
+    for corr in [0.3, 1]:
         sb.compute_benefit_at_corr(corr, use_bestmatch=True)
         
         fig, ax = plot_sorted_by_A(sb.benefit_df, color_dict)

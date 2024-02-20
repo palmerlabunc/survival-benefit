@@ -165,7 +165,14 @@ def plot_compare_monotherapy_added_benefit_each_combo(input_sheet: pd.DataFrame,
     n = 500
 
     n_combos = indf.shape[0]
-    fig, axes = set_figure_size_dim(n_combos, ax_width=1.5, ax_height=1.5, max_cols=5)
+    if n_combos == 1:
+        width, height = 1.5, 1.5
+    else:
+        width, height = 1.2, 1.2
+        
+    fig, axes = set_figure_size_dim(n_combos, 
+                                    ax_width=width, ax_height=height, 
+                                    max_cols=5)
     ax_idx = 0
 
     for i in indf.index:
@@ -199,14 +206,15 @@ def plot_compare_monotherapy_added_benefit_each_combo(input_sheet: pd.DataFrame,
         ax = plot_compare_monotherapy_added_benefit_one_combo(ax, exp, color_dict, 
                                                               target_deltat=target_deltat, 
                                                               high_deltat=high_deltat)
-
-        
+        if len(axes) > 1:
+            ax.set_xlabel('')
+            ax.set_ylabel('')
         ax.set_xlim(0, assess_tmax)
         ax.set_xticks(get_xticks(assess_tmax, metric='months'))
-        if i == 0:
-            ax.legend()
         ax.set_title(make_label(name_ab))
-        
+    if len(axes) > 1:
+        fig.supxlabel('Added benefit (months)')
+        fig.supylabel('Patients (%)')
     return fig
 
 
