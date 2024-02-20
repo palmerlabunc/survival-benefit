@@ -255,6 +255,35 @@ def plot_gini_by_something_boxplot(compiled_stats: pd.DataFrame, by: str, n_min=
     return fig
 
 
+def plot_gini_vs_HR(data: pd.DataFrame, endpoint: str) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    sns.scatterplot(x=f'{endpoint} HR', y='Gini_coefficient',
+                    hue='Experimental Class',
+                    palette=drug_class_color_dict,
+                    s=10,
+                    data=data, ax=ax)
+    
+    ax.legend(bbox_to_anchor=(1.05, 1), loc=2)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+
+    ax.set_xscale('log', base=2)
+    x_major = [0.125, 0.25, 0.5, 1]
+    ax.xaxis.set_major_locator(plticker.FixedLocator(x_major))
+    ax.xaxis.set_major_formatter(plticker.FixedFormatter(x_major))
+    ax.xaxis.set_minor_locator(plticker.MultipleLocator(base=0.1))
+    ax.xaxis.set_minor_formatter(plticker.NullFormatter())
+    ax.set_xlim(0.1, 1.5)
+    ax.set_yticks([0, 0.5, 1])
+
+    ax.set_xlabel('Hazard Ratio')
+    ax.set_ylabel('Gini coefficient')
+
+    r, p = spearmanr(data['Gini_coefficient'], data[f'{endpoint} HR'])
+    ax.set_title(f'Spearmanr={r:.2f}, p={p:.1e}, n={data.shape[0]}')
+    return fig
+
+
 def run_example_survival_benefit(input_df: pd.DataFrame, data_dir: str, pred_dir: str):
     n = 500
     for _, row in input_df.iterrows():
@@ -336,6 +365,10 @@ def main():
                     bbox_inches='tight')
         fig8dat.to_csv(f"{config['main_combo']['table_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.source_data.csv")
     
+        fig9 = plot_gini_vs_HR(extended_exp_corr_stats_endpoint, endpoint)
+        fig9.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_vs_HR_scatterplot.pdf",
+                    bbox_inches='tight')
+
     # 8: Breast_Ixabepilone-Capecitabine_Thomas2007_PFS
     # 16: Breast_Ribociclib-Letrozole_Hortobagyi2018_PFS
     # 63: Lung_Atezolizumab-Carboplatin+Etoposide_Horn2018_PFS
