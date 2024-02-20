@@ -55,16 +55,10 @@ def compile_stats(table_dir: str, corr_type: str) -> pd.DataFrame:
             benefit_filename, index_col=0, header=0).squeeze(axis=1)
         
         combo = stats['Combination']
-        if 'VanCutsem2015' in combo:
-            tokens = combo.rsplit('_', 2)
-            stats.loc['combo_name'] = tokens[0]
-            stats.loc['endpoint'] = endpoint_simple(tokens[1])
+        key, endpoint = separate_key_endpoint_from_name(combo)
+        stats.loc['combo_name'] = key
+        stats.loc['endpoint'] = endpoint_simple(endpoint)
 
-        else:
-            tokens = combo.rsplit('_', 1)
-            stats.loc['combo_name'] = tokens[0]
-            stats.loc['endpoint'] = endpoint_simple(tokens[1])
-        
         stat_df = pd.concat([stat_df, stats], axis=1, join='outer')
     
     stat_df = stat_df.T
@@ -79,15 +73,57 @@ def compile_stats(table_dir: str, corr_type: str) -> pd.DataFrame:
 
 def merge_with_metadata(metadata: pd.DataFrame, stats: pd.DataFrame) -> pd.DataFrame:
     metadata = metadata.dropna(subset=['Key', 'Indication'])
-    metadata.drop_duplicates(
-        subset=['Cancer Type', 'Experimental', 'Control', 'Trial ID', 'Trial Name'],
-        inplace=True)
-
     merged = pd.merge(metadata, stats, left_on='Key', right_on='combo_name', how='right')
     return merged
 
 
-def plot_1mo_responder_percentage(stats: pd.DataFrame, highlight=False) -> plt.figure:
+def compute_median_benefit(data_dir: str, comb_name_list) -> dict:
+    median_dict = {}
+    for comb_name in comb_name_list:
+        comb_prefix = comb_name
+        control_prefix = get_control_name_from_combo(comb_prefix)
+        median_dict[comb_name] = compute_median_benefit_helper(data_dir, control_prefix, comb_prefix)
+    return median_dict
+
+
+def compute_median_benefit_helper(data_dir: str, control_prefix: str, comb_prefix: str, 
+                           n: int = 500) -> float:
+    """Compute the median benefit (survival at 50%) as would have been reported in
+    clinical trials. If the median survival of the combination arm is greater than
+    the maximum time, return np.nan.
+
+    Args:
+        data_dir (str): The directory of the data
+        control_prefix (str): The prefix of the control file
+        comb_prefix (str): The prefix of the combination file
+        corr (float): The correlation to compute the benefit
+        out_dir (str): The output directory
+        n (int, optional): The number of virtual patients to use. Defaults to 500.
+    """
+    warnings.simplefilter('ignore', UserWarning)
+
+    try:
+        survival_benefit = SurvivalBenefit(mono_name=f'{data_dir}/{control_prefix}', 
+                                            comb_name=f'{data_dir}/{comb_prefix}',
+                                            n_patients=n, save_mode=False)
+    except FileNotFoundError:
+        return np.nan
+    
+    mono_data = survival_benefit.mono_survival_data.processed_data
+    mono_median = mono_data.at[n/2, 'Time']
+    
+    comb_data = survival_benefit.comb_survival_data.processed_data
+    comb_median = comb_data.at[n/2, 'Time']
+
+    benefit = comb_median - mono_median
+
+    if comb_median > survival_benefit.tmax:
+        return np.nan
+    
+    return benefit
+
+
+def plot_1mo_responder_percentage(stats: pd.DataFrame, highlight=False) -> plt.Figure:
     col = 'Percent_patients_benefitting_1mo_from_valid_highbound'
     stat_df = stats.sort_values(col).reset_index(drop=True)
     stat_df.loc[:, 'above_50'] = stat_df[col] > 50
@@ -175,13 +211,20 @@ def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame,
     data_master_df.drop_duplicates(
         subset=['Cancer Type', 'Experimental', 'Control', 'Trial ID', 'Trial Name'],
         inplace=True)
-    actual_median_benefit_df = pd.concat([pd.Series(index=data_master_df['Key'] + '_OS',
-                                                data=data_master_df['OS median benefit'].values),
-                                      pd.Series(index=(data_master_df['Key'] + '_' + data_master_df['Surrogate Metric']).values,
-                                                data=data_master_df['Surrogate median benefit'].values).dropna()],
-                                     axis=0)
+    actual_median_benefit_df = pd.concat([pd.Series(index=data_master_df['Key'].apply(lambda x: add_endpoint_to_key(x, 'OS')).values,
+                                                    data=data_master_df['OS median benefit'].values),
+                                          pd.Series(index=data_master_df.apply(lambda x: add_endpoint_to_key(x['Key'], x['Surrogate Metric']), axis=1).values,
+                                                    data=data_master_df['Surrogate median benefit'].values).dropna()],
+                                         axis=0)
+    # remove rows with 'Not reached for comb' and 'Not reached'
     actual_median_benefit_df = actual_median_benefit_df[~actual_median_benefit_df.isin(['Not reached for comb', 'Not reached'])].astype(float)
+
+    # compute median benefit from A and A+B survival curves if na
+    median_benefit_dict = compute_median_benefit(config['main_combo']['data_dir'],
+                                                 actual_median_benefit_df.index)
+    actual_median_benefit_df.fillna(median_benefit_dict, inplace=True)
     actual_median_benefit_df.dropna(inplace=True)
+
     actual_median_benefit_df = actual_median_benefit_df.to_frame(name='actual')
 
     merged = pd.merge(actual_median_benefit_df, stats, 
@@ -406,15 +449,20 @@ def main():
         fig7.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_highlight_barplot.pdf",
                     bbox_inches='tight')
         
-        fig8dat, fig8 = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats_endpoint)
+
+        
+        fig8dat, fig8 = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats_endpoint, config,
+                                                                endpoint=endpoint)
         fig8.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot.pdf",
                     bbox_inches='tight')
         
         fig8dat, fig8b = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats_endpoint, 
-                                                        highlight=True, endpoint=endpoint)
+                                                                 config,
+                                                                 highlight=True, endpoint=endpoint)
         fig8b.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.pdf",
-                    bbox_inches='tight')
-        fig8dat.to_csv(f"{config['main_combo']['table_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.source_data.csv")
+                      bbox_inches='tight')
+        fig8dat.to_csv(f"{config['main_combo']['table_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.source_data.csv",
+                       index=False)
     
         fig9 = plot_gini_vs_HR(extended_exp_corr_stats_endpoint, endpoint)
         fig9.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_vs_HR_scatterplot.pdf",
