@@ -9,6 +9,7 @@ import matplotlib.patches as patches
 import seaborn as sns
 from scipy.stats import spearmanr, rankdata
 from survival_benefit.prob_functions import get_prob
+from survival_benefit.utils import get_xticks
 from survival_benefit.survival_data_class import SurvivalData
 
 COLORS = {'mono': '#00cd6c', 
@@ -302,6 +303,7 @@ class SurvivalBenefit:
         ax.axhspan(0, 100 * mono_min_surv_idx / self.N,
                    color='gray', alpha=0.3)  # gray shading for unknown
         ax.set_xlim(0, self.tmax + 1)
+        ax.set_xticks(get_xticks(self.tmax))
         ax.set_ylim(-1, 105)
         ax.set_xlabel('Time (months)')
         ax.set_ylabel('Patients (%)')
@@ -431,6 +433,7 @@ class SurvivalBenefit:
         if kind == 'absolute':
             ax.set_xlabel('Added benefit from B (months)')
             ax.set_xlim(0, self.tmax)
+            ax.set_xticks(get_xticks(self.tmax))
 
         elif kind == 'ratio':
             ax.set_xlabel('Fold increase in time (%)')
@@ -521,6 +524,7 @@ class SurvivalBenefit:
 
             ax.set_xlabel('Added benefit from B (months)')
             ax.set_xlim(0, self.tmax)
+            ax.set_xticks(get_xticks(self.tmax))
 
         elif kind == 'ratio':
             ax.set_xlabel('Fold increase in time (%)')

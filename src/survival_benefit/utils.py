@@ -5,6 +5,7 @@ from lifelines import KaplanMeierFitter, WeibullFitter
 from scipy.stats import spearmanr
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
+from typing import List
 
 rng = np.random.default_rng()
 
@@ -167,4 +168,35 @@ def weibull_from_digitized(df: pd.DataFrame, N: int, tmax: float) -> pd.DataFram
     data = get_weibull_survival_dataframe(res.x[0], res.x[1], N)
     return data
 
+
+def get_xticks(tmax: float, metric='months') -> List[float]:
+    """Set x-axis limits and ticks.
+
+    Args:
+        tmax (float): Maximum time.
+        metric (str, optional): Metric (either months or days). Defaults to 'months'.
+    Returns:
+        List[float]: List of xticks.
+    """
+    if metric == 'months':
+        if tmax < 6:
+            return [0, 2, 4]
+        elif tmax >= 6 and tmax < 12:
+            step = 3
+        elif tmax >= 12 and tmax < 24:
+            step = 6
+        else:
+            step = 12
+     
+    elif metric == 'days':
+        if tmax < 100:
+            step = 20
+        elif tmax >=100 and tmax < 200:
+            step = 50
+        else:
+            step = 100
+    
+    max_tick = step * int(tmax / step) + 1
+    xticks = list(range(0, max_tick, step))
+    return xticks
 
