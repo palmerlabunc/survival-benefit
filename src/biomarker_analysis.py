@@ -9,7 +9,7 @@ from lifelines import CoxPHFitter
 from utils import load_config, get_cox_results
 from create_input_sheets import create_endpoint_subset_sheet
 
-def ipd_from_benefit_df2(benefit_df: pd.DataFrame, tmax: float, benefitter=True, arm='monotherapy') -> pd.DataFrame:
+def ipd_from_benefit_df2(benefit_df: pd.DataFrame, tmax: float, benefiter=True, arm='monotherapy') -> pd.DataFrame:
     """
     Convert digitized KM curves to individual patient data (IPD) format. Pad the data with censoring times
     (maintain the same proportion as total patients)
@@ -17,7 +17,7 @@ def ipd_from_benefit_df2(benefit_df: pd.DataFrame, tmax: float, benefitter=True,
     Args:
         benefit_df (pd.DataFrame): The benefit_df output from SurvivalBenefit
         tmax (float): The maximum time of follow-up
-        benefitter (bool, optional): Whether to return the benefitting subpopulation. 
+        benefiter (bool, optional): Whether to return the benefitting subpopulation. 
             Defaults to True.
         arm (str, optional): The arm to return. 'monotherapy' or 'combination' 
             Defaults to 'monotherapy'.
@@ -29,7 +29,7 @@ def ipd_from_benefit_df2(benefit_df: pd.DataFrame, tmax: float, benefitter=True,
     dat = benefit_df.copy()
     event_prop = dat['valid'].sum() / len(dat)
 
-    if benefitter:
+    if benefiter:
         dat = dat[dat['delta_t'] >= 1]
     else:
         dat = dat[dat['delta_t'] < 1]
@@ -43,7 +43,6 @@ def ipd_from_benefit_df2(benefit_df: pd.DataFrame, tmax: float, benefitter=True,
     
     censor_times = np.repeat(tmax, len(event_times)/event_prop * (1 - event_prop))
     censor = np.vstack((censor_times, np.repeat(0, len(censor_times)))).T
-
 
     ipd = pd.DataFrame(np.vstack((event, censor)), 
                        columns=['Time', 'Event'])
@@ -87,12 +86,12 @@ def optimal_stratification_analysis(data_df: pd.DataFrame, pred_dir: str) -> pd.
                                  index_col=0, header=0).squeeze(axis=1)
         
         # selected patients
-        for benefitter, label in zip([True, False], ['benefitter', 'unselected']):
+        for benefiter, label in zip([True, False], ['benefiter', 'non-benefiter']):
             mono_ipd = ipd_from_benefit_df2(benefit_df, tmax, 
-                                            benefitter=benefitter, 
+                                            benefiter=benefiter, 
                                             arm='monotherapy')
             comb_ipd = ipd_from_benefit_df2(benefit_df, tmax, 
-                                            benefitter=benefitter, 
+                                            benefiter=benefiter, 
                                             arm='combination')
 
             p, hr, low, high = get_cox_results(mono_ipd, comb_ipd)
@@ -102,16 +101,16 @@ def optimal_stratification_analysis(data_df: pd.DataFrame, pred_dir: str) -> pd.
             dat.loc[combo, f'HR_high_{label}'] = high
 
     dat.loc[:, 'better_2x'] = False
-    dat.loc[dat['HR']/dat['HR_benefitter'] >= 2, 'better_2x'] = True
+    dat.loc[dat['HR']/dat['HR_benefiter'] >= 2, 'better_2x'] = True
 
     return dat
     
 def optimal_stratification_scatterplot(dat: pd.DataFrame, 
-                                       subgroup: str = 'benefitter') -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+                                       subgroup: str = 'benefiter') -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(2, 2))
     sns.set_palette('deep')
     red = sns.color_palette()[3]
-    if subgroup == 'benefitter':
+    if subgroup == 'benefiter':
         sns.scatterplot(data=dat, y='HR', x=f'HR_{subgroup}', ax=ax, 
                         hue='better_2x', palette=['#969696', red],
                         size='better_2x', sizes=[10, 12], legend=False)
@@ -136,11 +135,11 @@ def optimal_stratification_scatterplot(dat: pd.DataFrame,
     ax.set_ylim(0.1, 1.2)
     major = [0.125, 0.25, 0.5, 1]
     
-    if subgroup == 'benefitter':
-        ax.set_xlabel('HRbenefitter')
+    if subgroup == 'benefiter':
+        ax.set_xlabel('HRbenefiter')
     else:
-        ax.set_xlabel('HRunselected')
-    ax.set_ylabel('HR')
+        ax.set_xlabel('HRnon-benefiter')
+    ax.set_ylabel('HRtotal')
 
     ax.xaxis.set_major_locator(plticker.FixedLocator(major))
     ax.xaxis.set_major_formatter(plticker.FixedFormatter(major))
@@ -187,9 +186,9 @@ def actual_biomarker_vs_optimal_stratification(biomarker_input_df: pd.DataFrame,
         tmax = eval(stats['Max_time'])
         benefit_df = pd.read_csv(benefit_filename, index_col=0, header=0)
         
-        mono_ipd = ipd_from_benefit_df2(benefit_df, tmax, benefitter=True, 
+        mono_ipd = ipd_from_benefit_df2(benefit_df, tmax, benefiter=True, 
                                         arm='monotherapy')
-        comb_ipd = ipd_from_benefit_df2(benefit_df, tmax, benefitter=True, 
+        comb_ipd = ipd_from_benefit_df2(benefit_df, tmax, benefiter=True, 
                                         arm='combination')
 
         p, hr, low, high = get_cox_results(mono_ipd, comb_ipd)
@@ -292,7 +291,7 @@ def main():
 
     pfs_df = optimal_stratification_analysis(pfs_df, pred_dir)
     pfs_df.to_csv(f"{config['biomarker']['table_dir']}/PFS.optimal_stratification_analysis.csv")
-    for subgroup in ['benefitter', 'unselected']:
+    for subgroup in ['benefiter', 'non-benefiter']:
         fig = optimal_stratification_scatterplot(pfs_df, subgroup=subgroup)
         fig.savefig(f"{config['biomarker']['fig_dir']}/PFS.optimal_stratification_{subgroup}_scatterplot.pdf", 
                     bbox_inches='tight')
