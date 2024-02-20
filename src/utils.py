@@ -32,7 +32,8 @@ def get_cox_results(ipd_base: pd.DataFrame, ipd_test: pd.DataFrame) -> tuple:
 
 
 def set_figure_size_dim(n_axes: int = 1, 
-                        ax_width: float = 1.5, ax_height: float = 1.5,
+                        ax_width: float = 1.5, 
+                        ax_height: float = 1.5,
                         max_cols: int = 4) -> (plt.Figure, np.ndarray[plt.Axes]):
     """Generate a figure with size based on number of columns and desired axis size.
 
@@ -47,7 +48,7 @@ def set_figure_size_dim(n_axes: int = 1,
     """
     nrow = int(n_axes/max_cols)
     if nrow > 0:
-        ncol = 5
+        ncol = max_cols
     else:
         ncol = n_axes
     if n_axes % max_cols != 0:
@@ -96,3 +97,65 @@ def get_xticks(tmax: float, metric='months') -> List[float]:
     max_tick = step * int(tmax / step) + 1
     xticks = list(range(0, max_tick, step))
     return xticks
+
+
+def add_endpoint_to_key(key: str, endpoint: str) -> str:
+    """Add endpoint to key.
+
+    Args:
+        key (str): Key.
+        endpoint (str): Endpoint.
+
+    Returns:
+        str: New key.
+    """
+
+    tokens = key.split('_')
+    # normally key is in the format of {Cancer Type}_{First Author/Year}_{Drug}-{Control}
+    # sometimes it will have additional information, 
+    # e.g., {Cancer Type}_{First Author/Year}_{Drug}-{Control}_{Additional Info}
+    # In this case, we add the endpoint before the additional info 
+    # e.g., {Cancer Type}_{First Author/Year}_{Drug}-{Control}_{Endpoint}_{Additional Info}
+    
+    if len(tokens) > 3:
+       return f'{tokens[0]}_{tokens[1]}_{tokens[2]}_{endpoint}_{tokens[3]}'
+    return f'{key}_{endpoint}'
+
+
+def separate_key_endpoint_from_name(combo_endpoint: str) -> Tuple[str, str]:
+    """Get key (i.e., {Cancer Type}_{First Author/Year}_{Drug}-{Control}_{Additionl Info}) from
+    {Cancer Type}_{First Author/Year}_{Drug}-{Control}_{Endpoint}_{Additional Info}
+
+    Args:
+        combo_endpoint (str): Combo name with endpoint.
+
+    Returns:
+        str: Key without endpoint
+        str: Endpoint
+    """
+    tokens = combo_endpoint.split('_')
+    # 0: cancer  type
+    # 1: first author/year
+    # 2: drug-control
+    # 3: endpoint
+    # 4: additional info
+    # {Cancer Type}_{First Author/Year}_{Drug}-{Control}_{Endpoint}_{Additionl Info}
+    if len(tokens) > 4:
+        return '_'.join(tokens[:3]) + '_' + tokens[-1], tokens[3]
+    # {Cancer Type}_{First Author/Year}_{Drug}-{Control}_{Endpoint}
+    return '_'.join(tokens[:-1]), tokens[-1]
+
+
+def get_control_name_from_combo(combo: str) -> str:
+    """Get control name from combo name.
+
+    Args:
+        combo (str): Combo name.
+
+    Returns:
+        str: Control name.
+    """
+    tokens = combo.split('_')
+    drugs = tokens[1].split('-')
+
+    return '_'.join([tokens[0], drugs[1]] +  tokens[2:])
