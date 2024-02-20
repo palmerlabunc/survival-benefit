@@ -107,19 +107,63 @@ def plot_1mo_responder_percentage(stats: pd.DataFrame, highlight=False) -> plt.f
     ax.set_ylabel('Patients benefitting\nat least 1 month (%)')
     ax.set_yticks([0, 50, 100])
     ax.set_xlabel('88 Combination therapies')
+def plot_1mo_responder_percentage_inferred_apparent(high_corr_stats: pd.DataFrame, 
+                                                    exp_corr_stats: pd.DataFrame) -> plt.Figure:
+    col = 'Percent_patients_benefitting_1mo_from_valid_highbound'
+    exp_stat_df = exp_corr_stats.sort_values(col)
+    high_stat_df = high_corr_stats.reindex(exp_stat_df.index)
+    fig, ax = plt.subplots(figsize=(3, 1.5))
+
+    high_stat_df.reset_index().plot.bar(y=col, ax=ax, 
+                                        color=COLOR_DICT['visual_appearance'])
+    exp_stat_df.reset_index().plot.bar(y=col, ax=ax, 
+                                    color=COLOR_DICT['inference'])
+
+    ax.set_xticklabels('')
+    ax.set_xticks([])
+    ax.set_ylabel('Patients benefitting\nat least 1 month (%)')
+    ax.set_yticks([0, 50, 100])
+    ax.set_xlabel(f'{exp_stat_df.shape[0]} Combination therapies')
     ax.set_ylim(0, 100)
     ax.get_legend().remove()
     return fig
 
 
-def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame, stats: pd.DataFrame, 
+def compare_OS_surrogate_gini(compiled_stats: pd.DataFrame) -> pd.DataFrame:
+    df = compiled_stats.pivot_table(index='Key', 
+                                    columns='endpoint', 
+                                    values='Gini_coefficient')
+    df = df.dropna()
+    return df
+
+
+def plot_OS_surrogate_gini(data: pd.DataFrame) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    sns.scatterplot(data=data, x='OS', y='Surrogate',
+                    s=10)
+    r, p = pearsonr(data['OS'], data['Surrogate'])
+    ax.set_title(f'Pearson r={r:.2f}, p={p:.2f}, n={data.shape[0]}')
+    ax.set_xlim(0.2, 1)
+    ax.set_ylim(0.2, 1)
+    ax.set_xticks([0.2, 0.4, 0.6, 0.8, 1])
+    ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1])
+    ax.plot([0.2, 1], [0.2, 1], 'k--')
+    ax.set_xlabel('OS Gini coefficient')
+    ax.set_ylabel('Surrogate Gini coefficient')
+    return fig
+
+
+def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame, 
+                                            stats: pd.DataFrame,
+                                            config: dict,
                                             highlight=False, 
-                                            endpoint: str = None) -> (pd.DataFrame, plt.Figure):
+                                            endpoint: str = None) -> tuple[pd.DataFrame, plt.Figure]:
     """_summary_
 
     Args:
         metadata (pd.DataFrame): _description_
         stats (pd.DataFrame): _description_
+        config (dict): _description_
         highlight (bool, optional): Highlight combinations with > 3 months more benefit. Defaults to False.
         endpoint (str, optional): _description_. Defaults to None.
 
@@ -350,6 +394,13 @@ def main():
         fig6 = plot_1mo_responder_percentage(exp_corr_stats_endpoint, highlight=False)
         fig6.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_barplot.pdf",
                     bbox_inches='tight')
+        
+        # plot both inferred and apparent
+        fig6 = plot_1mo_responder_percentage_inferred_apparent(high_corr_stats_endpoint,
+                                                               exp_corr_stats_endpoint)
+        
+        fig6.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_both_barplot.pdf",
+            bbox_inches='tight')
         
         fig7 = plot_1mo_responder_percentage(exp_corr_stats_endpoint, highlight=True)
         fig7.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_highlight_barplot.pdf",
