@@ -48,13 +48,14 @@ def draw_corr_pdx(processed_df):
     r, p = spearmanr(processed_df[drug1], processed_df[drug2])
     fig, ax = plt.subplots(figsize=(3, 3))
 
+    # BestAvgResponse >= 30 is considered as inactive
     drug1_inactive = (processed_df[drug1] >= 30).sum()
     drug2_inactive = (processed_df[drug2] >= 30).sum()
     total = processed_df.shape[0]
     sns.scatterplot(x=drug1, y=drug2, data=processed_df, ax=ax)
     ax.axvline(0, color='gray', linestyle='--')
     ax.axhline(0, color='gray', linestyle='--')
-    if (drug1_inactive/total > 0.8) or (drug2_inactive/total > 0.8):
+    if (drug1_inactive/total > 0.9) or (drug2_inactive/total > 0.9):
         print("WARNING: at least one of the drug is inactive!")
     ax.set_xlabel(f'{drug1} BestAvgResponse')
     ax.set_ylabel(f'{drug2} BestAvgResponse')
