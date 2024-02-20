@@ -321,6 +321,15 @@ def compute_rmse_in_survival_km(true_benefit_event_df: pd.DataFrame, inferred_de
 
 
 def added_benefit_event_table(event_df: pd.DataFrame, control_drug_idx: int) -> pd.DataFrame:
+    """Only uses models where the control drug event is observed.
+
+    Args:
+        event_df (pd.DataFrame): IPD for combo, mono1, and mono2
+        control_drug_idx (int): _description_
+
+    Returns:
+        pd.DataFrame: individual patient data for added benefit
+    """
     df = event_df.copy()
     # only use models where the control drug event is observed
     df = df[df[f'E_mono{control_drug_idx}'] == 1]
@@ -332,7 +341,7 @@ def added_benefit_event_table(event_df: pd.DataFrame, control_drug_idx: int) -> 
 
     return df[['T_benefit', 'E_benefit']]
 
-##### LEGACY FUNCTIONS (NO LONGER USED) #####
+##### OBSOLETE FUNCTIONS (NO LONGER USED) #####
 
 def plot_correlation_benefit_comparison_3lineplot(result_df: pd.DataFrame) -> plt.Figure:
     melted = pd.melt(result_df,
