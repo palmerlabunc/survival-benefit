@@ -333,9 +333,29 @@ def plot_gini_by_something_boxplot(compiled_stats: pd.DataFrame, by: str, n_min=
         plt.figure:
     """
     sns.set_palette('deep')
-    fig, ax = plt.subplots(figsize=(3, 2))
-    dat = compiled_stats[compiled_stats.groupby(by)[by].transform('size') > n_min]
-    sns.boxplot(y=by, x='Gini_coefficient', data=dat, ax=ax)
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    dat = compiled_stats[compiled_stats.groupby(by)[by].transform('size') >= n_min]
+    
+    order = dat.groupby(by)['Gini_coefficient'].median().sort_values().index
+    if by == 'Experimental Class':
+        sns.boxplot(y=by, x='Gini_coefficient', data=dat, 
+                    order=order, fliersize=0,
+                    palette=drug_class_color_dict,
+                    ax=ax)
+    if by == 'endpoint':
+        t, p = ttest_ind(dat[dat['endpoint'] == 'OS']['Gini_coefficient'],
+                        dat[dat['endpoint'] == 'Surrogate']['Gini_coefficient'])
+        sns.boxplot(y=by, x='Gini_coefficient', data=dat, 
+                    order=order, fliersize=0,
+                    ax=ax)
+        ax.set_title(f't-test p={p:.1e}')
+    
+    sns.stripplot(y=by, x='Gini_coefficient', 
+                  data=dat,
+                  order=order,
+                  ax=ax, 
+                  color='black', size=3, alpha=0.5)
+    
     ax.set_ylabel(by)
     ax.set_xlabel('Gini coefficient')
     ax.set_xlim(0, 1)
@@ -411,18 +431,30 @@ def main():
     extended_exp_corr_stats.to_csv(f"{config['main_combo']['table_dir']}/extended_exp_corr_stats_compiled.csv",
                                    index=False)
 
+    fig3 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'endpoint')
+    fig3.savefig(f"{config['main_combo']['fig_dir']}/gini_by_endpoint_boxplot.pdf",
+                 bbox_inches='tight')
+    
+    # compare OS and Surrogate Gini
+    gini_compare_df = compare_OS_surrogate_gini(extended_exp_corr_stats)
+    gini_compare_df.to_csv(f"{config['main_combo']['table_dir']}/OS_surrogate_gini_scatterplot.source_data.csv")
+    fig = plot_OS_surrogate_gini(gini_compare_df)
+    fig.savefig(f"{config['main_combo']['fig_dir']}/OS_surrogate_gini_scatterplot.pdf",
+                bbox_inches='tight')
+    
+
     for endpoint in ['OS', 'Surrogate']:
         exp_corr_stats_endpoint = exp_corr_stats[exp_corr_stats['endpoint'] == endpoint]
         high_corr_stats_endpoint = high_corr_stats[high_corr_stats['endpoint'] == endpoint]
+        extended_exp_corr_stats_endpoint = extended_exp_corr_stats[extended_exp_corr_stats['endpoint'] == endpoint]
         
-        fig1 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'Cancer Type')
+        fig1 = plot_gini_by_something_boxplot(extended_exp_corr_stats_endpoint, 'Cancer Type',
+                                              n_min=3)
         fig1.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_cancer_type_boxplot.pdf",
                     bbox_inches='tight')
-        fig2 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'Experimental Class')
+        fig2 = plot_gini_by_something_boxplot(extended_exp_corr_stats_endpoint, 'Experimental Class',
+                                              n_min=3)
         fig2.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_experimental_class_boxplot.pdf",
-                    bbox_inches='tight')
-        fig3 = plot_gini_by_something_boxplot(extended_exp_corr_stats, 'endpoint')
-        fig3.savefig(f"{config['main_combo']['fig_dir']}/gini_by_endpoint_boxplot.pdf",
                     bbox_inches='tight')
         
         fig4 = plot_gini_histplot(exp_corr_stats)
