@@ -1,16 +1,21 @@
 import pandas as pd
 import numpy as np
-from scipy.stats import ttest_rel
+from scipy.stats import ttest_rel, pearsonr, spearmanr, ttest_ind
 import matplotlib.pyplot as plt
+import matplotlib.ticker as plticker
 import seaborn as sns
 import warnings
 import os
 import glob
 from survival_benefit.survival_benefit_class import SurvivalBenefit
-from utils import load_config
+from utils import load_config, add_endpoint_to_key, get_control_name_from_combo, separate_key_endpoint_from_name
 
-config = load_config()
-COLOR_DICT = config['colors']
+COLOR_DICT = load_config()['colors']
+
+drug_class_color_dict = dict(zip(['non-ICI immunotherapy', 'cytotoxic chemotherapy',
+                                  'targeted therapy', 'anti-angiogenesis',
+                                  'immune checkpoint inhibition', 'endocrine therapy'],
+                                  sns.color_palette('colorblind')))
 
 def endpoint_simple(endpoint: str) -> str:
     if endpoint == 'OS':
@@ -142,7 +147,12 @@ def plot_1mo_responder_percentage(stats: pd.DataFrame, highlight=False) -> plt.F
     ax.set_xticks([])
     ax.set_ylabel('Patients benefitting\nat least 1 month (%)')
     ax.set_yticks([0, 50, 100])
-    ax.set_xlabel('88 Combination therapies')
+    ax.set_xlabel(f'{stat_df.shape[0]} Combination therapies')
+    ax.set_ylim(0, 100)
+    ax.get_legend().remove()
+    return fig
+
+
 def plot_1mo_responder_percentage_inferred_apparent(high_corr_stats: pd.DataFrame, 
                                                     exp_corr_stats: pd.DataFrame) -> plt.Figure:
     col = 'Percent_patients_benefitting_1mo_from_valid_highbound'
@@ -243,7 +253,8 @@ def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame,
                         data=merged, 
                         ax=ax, color=COLOR_DICT['inference'])
     else:
-        sns.scatterplot(y='Median_benefit_highbound', x='actual',
+        sns.scatterplot(y='Median_benefit_highbound', 
+                        x='actual',
                         hue='3mo_more_benefit',
                         hue_order=[False, True],
                         size=3,
@@ -253,6 +264,7 @@ def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame,
     
     # legend box outside of the plot above the right corner
     #ax.legend(bbox_to_anchor=(1.05, 1), loc=2)
+    ax.set_title(f'{merged.dropna(subset=["actual"]).shape[0]} combinations')
     ax.get_legend().remove()
     ax.plot([0, 27], [0, 27], color='black', 
             linestyle='--', linewidth=1)
@@ -265,7 +277,7 @@ def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame,
     return merged, fig
 
 
-def plot_gini_histplot(compiled_stats: pd.DataFrame) -> plt.figure:
+def plot_gini_histplot(compiled_stats: pd.DataFrame) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(3, 2))
     sns.histplot(x=compiled_stats['Gini_coefficient'], binwidth=0.1,
                  binrange=(0, 1),
@@ -320,6 +332,7 @@ def plot_gini_compare_experimental_and_high(exp_corr_stats: pd.DataFrame,
     axes[1].set_yticks([])
     
     return fig
+
 
 def plot_gini_by_something_boxplot(compiled_stats: pd.DataFrame, by: str, n_min=5) -> plt.Figure:
     """_summary_

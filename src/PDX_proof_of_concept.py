@@ -172,8 +172,8 @@ def cumulative_distplot_monotherapy_and_combo_added_benefit(mono_merged: pd.Data
     ax.set_xlim(-100, 0)
     ax.axvline(0, linestyle='--', color='k', alpha=0.5)
     ax.legend(labels=['All monotherapy', 'Active monotherapy',
-             'Inactive monotherapy', 'Successful combination'],
-              bbox_to_anchor=(1.05, 1), loc='upper left')
+             'Inactive monotherapy', 'Successful combination'], 
+             loc='upper left')
     return fig
 
 
@@ -409,15 +409,16 @@ def bootstrapping_test_for_antagonism(combo_added_benefit: pd.DataFrame,
                                       n_rep=10000) -> Tuple[np.array, float, float]:
     rng = np.random.default_rng(0)
     antag_mean_arr = np.zeros(n_rep)
+    n = len(combo_added_benefit)
     for run in range(n_rep):
-        sampled_idx = rng.integers(0, len(mono_added_benefit), size=len(combo_added_benefit))
+        sampled_idx = rng.integers(0, len(mono_added_benefit), size=n)
         mono_sampled = mono_added_benefit.loc[sampled_idx, 'added_benefit']
         neg_samples = mono_sampled[mono_sampled < 0]
-        antag_mean = neg_samples.sum() / neg_samples.shape[0]
+        antag_mean = neg_samples.sum() / n
         antag_mean_arr[run] = antag_mean
 
     neg_benefit = combo_added_benefit[combo_added_benefit['added_benefit'] < 0]
-    comb_antag_mean = neg_benefit['added_benefit'].sum() / neg_benefit.shape[0]
+    comb_antag_mean = neg_benefit['added_benefit'].sum() / n
     null_mean = antag_mean_arr.mean()
     diff = abs(null_mean - comb_antag_mean)
     p = ((antag_mean_arr < null_mean - diff).sum() + (antag_mean_arr > null_mean + diff).sum()) / n_rep
@@ -442,7 +443,7 @@ def plot_boostrapping_distribution(antag_mean_arr: np.array,
         fig, ax = plt.subplots(figsize=(3, 2))
     
     sns.histplot(antag_mean_arr, ax=ax, stat='density', 
-                 label=f'Null from {label} p={p:.1e}',
+                 label=f'Null from {label}\np={p:.3f}',
                  color=color)
     ax.axvline(comb_antag_mean, 
                color='k', linestyle='--',
@@ -556,19 +557,19 @@ def plot_one_combo_example_barplot(dat: pd.DataFrame,
             ax.plot([0, t_control], [i+0.15, i+0.15], 
                     linewidth=7,
                     color=COLOR_DICT['control_arm'],
-                    alpha=0.8,
+                    alpha=0.5,
                     label=control_drug,
                     solid_capstyle='butt')
             ax.plot([t_control, t_combo], [i+0.15, i+0.15], 
                     linewidth=7,
                     color='k',
-                    alpha=0.5,
+                    alpha=1,
                     label=f'benefit of {added_drug}',
                     solid_capstyle='butt')
             ax.plot([0, t_combo], [i-0.15, i-0.15], 
                     linewidth=7,
                     color=COLOR_DICT['combination_arm'],
-                    alpha=0.8,
+                    alpha=0.5,
                     label=f'{control_drug} + {added_drug}',
                     solid_capstyle='butt')
             ax.set_ylim(-0.5, 2.5)
@@ -618,7 +619,7 @@ def test_antagonism_and_correlation(dat: pd.DataFrame, pdx_config: Mapping):
                                                                                mono_active)
     inactive_antag_mean_arr, comb_antag_mean, p_inactive = bootstrapping_test_for_antagonism(comb_active, 
                                                                                   mono_inactive)
-    fig8, ax = plt.subplots(figsize=(2, 2))
+    fig8, ax = plt.subplots(figsize=(3, 2))
 
     ax = plot_boostrapping_distribution(active_antag_mean_arr, comb_antag_mean, p_active,
                                         label='Active monotherapy',
@@ -714,7 +715,6 @@ def compare_inferred_apparent_to_actual_benefit(dat: pd.DataFrame, pdx_config: M
     #fig6_2boxplot = plot_correlation_benefit_comparison_2boxplot(fig56_data)
     #fig6_2boxplot.savefig(f'{fig_dir}/PDXE_actual_vs_high_corr_{DELTA_T}_benefit_2boxplot.pdf',
     #                      bbox_inches='tight')
-
 
 
 def main():
