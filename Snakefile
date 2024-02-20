@@ -191,8 +191,8 @@ rule biomarker_anlaysis:
         "env/publication.mplstyle"
     output:
         f"{config['biomarker']['table_dir']}/PFS.optimal_stratification_analysis.csv",
-        f"{config['biomarker']['fig_dir']}/PFS.optimal_stratification_benefitter_scatterplot.pdf",
-        f"{config['biomarker']['fig_dir']}/PFS.optimal_stratification_unselected_scatterplot.pdf",
+        f"{config['biomarker']['fig_dir']}/PFS.optimal_stratification_benefiter_scatterplot.pdf",
+        f"{config['biomarker']['fig_dir']}/PFS.optimal_stratification_non-benefiter_scatterplot.pdf",
         f"{config['biomarker']['table_dir']}/actual_biomarker_vs_optimal_stratification.csv",
         f"{config['biomarker']['fig_dir']}/actual_biomarker_vs_optimal_stratification.pdf",        
     shell:
