@@ -11,7 +11,7 @@ rule all:
         # biomarker analysis
         f"{config['biomarker']['fig_dir']}/actual_biomarker_vs_optimal_stratification.pdf",
         # single_agent analysis
-        f"{config['single_agent']['fig_dir']}/compare_monotherapy_added_benefit_gini.pdf",
+        f"{config['single_agent']['fig_dir']}/compare_monotherapy_inferred_benefit_gini.pdf",
         # PDX analysis
         f"{config['PDX']['fig_dir']}/PDXE_combo_added_benefit_stripplot.pdf",
         # clinical data summary
@@ -21,8 +21,11 @@ rule all:
         # real example
         f"{config['example']['fig_dir']}/{config['example']['real_example_combo']}.two_arms.pdf",
         # main combo analysis
-        f"{config['main_combo']['fig_dir']}/Surrogate.gini_compare_exp_and_high_kdeplot.pdf"
-
+        f"{config['main_combo']['fig_dir']}/Surrogate.gini_compare_exp_and_high_kdeplot.pdf",
+        # lottery example
+        f"{config['example']['fig_dir']}/lottery_example.pdf",
+        # correlation uncertainty
+        f"{config['corr_uncertainty_high']['fig_dir']}/gini_forest.pdf"
 
 rule preprocess_experimental:
     input:
@@ -85,7 +88,7 @@ rule create_input_sheets:
         "data/clinical_trials/{dataset}_input_data_sheet.csv"
     shell:
         "python src/create_input_sheets.py {wildcards.dataset}"
-
+        
 
 rule clinical_data_summary:
     input:
@@ -171,12 +174,14 @@ rule compare_with_monotherapy:
         "src/survival_benefit/survival_benefit_class.py",
         "src/survival_benefit/survival_data_class.py",
         "env/publication.mplstyle",
-        "src/utils.py"
+        "src/utils.py",
+        "src/compare_with_monotherapy.py"
     output:
         f"{config['single_agent']['table_dir']}/compare_monotherapy_added_benefit.csv",
         f"{config['single_agent']['fig_dir']}/compare_monotherapy_added_benefit_each_combo.pdf",
         f"{config['single_agent']['fig_dir']}/compare_monotherapy_added_benefit_rmse.pdf",
-        f"{config['single_agent']['fig_dir']}/compare_monotherapy_added_benefit_gini.pdf",
+        f"{config['single_agent']['fig_dir']}/compare_monotherapy_inferred_benefit_gini.pdf",
+        f"{config['single_agent']['fig_dir']}/compare_monotherapy_apparent_benefit_gini.pdf"
     shell:
         "python src/compare_with_monotherapy.py"
 
@@ -208,9 +213,9 @@ rule illustration:
         "env/publication.mplstyle"
     output:
         expand("{fig_dir}/sorted_by_A_corr_{corr}_with_weibull.pdf", 
-               fig_dir=config['example']['fig_dir'], corr=[0, 1]),
+               fig_dir=config['example']['fig_dir'], corr=[0.3, 1]),
         expand("{fig_dir}/sorted_by_AB_corr_{corr}_with_weibull.pdf", 
-               fig_dir=config['example']['fig_dir'], corr=[0, 1]),
+               fig_dir=config['example']['fig_dir'], corr=[0.3, 1]),
         f"{config['example']['fig_dir']}/two_arms.pdf"
     shell:
         "python src/illustrative_example.py"
@@ -229,3 +234,28 @@ rule real_example:
         f"{config['example']['fig_dir']}/{config['example']['real_example_experimental']}.pdf"
     shell:
         "python src/real_combo_example.py"
+
+
+rule lottery_example:
+    input:
+        "config.yaml",
+        "src/lottery_example.py",
+        "src/utils.py",
+        "env/publication.mplstyle"
+    output:
+        f"{config['example']['fig_dir']}/lottery_example.pdf",
+        f"{config['example']['fig_dir']}/lottery_example_cumulative.pdf",
+        f"{config['example']['fig_dir']}/lottery_example_probability.pdf"
+    shell:
+        "python src/lottery_example.py"
+
+
+rule corr_uncertainty:
+    input:
+        config['corr_uncertainty_low']['table_dir'] + '/predictions',
+        config['corr_uncertainty_high']['table_dir'] + '/predictions'
+    output:
+        f"{config['corr_uncertainty_high']['fig_dir']}/corr_distribution.pdf",
+        f"{config['corr_uncertainty_high']['fig_dir']}/gini_forest.pdf"
+    shell:
+        "python src/correlation_uncertainty.py"

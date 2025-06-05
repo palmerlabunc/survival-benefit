@@ -51,10 +51,10 @@ def plot_sorted_by_A(data: pd.DataFrame, color_dict: dict) -> (plt.Figure, plt.A
     fig, ax = plt.subplots(figsize=FIGSIZE)
     ax = plot_illustrative_survival_bars(data, 'new_t', 'Survival', 
                                          color_dict['added_benefit'], 
-                                         linewidth=3, y_shift=-2, ax=ax)
+                                         linewidth=3, y_shift=2, ax=ax)
     ax = plot_illustrative_survival_bars(data, 'Time', 'Survival',
                                          color_dict['control_arm'], 
-                                         linewidth=3, y_shift=-2, ax=ax)
+                                         linewidth=3, y_shift=2, ax=ax)
     return fig, ax
 
 
@@ -62,10 +62,10 @@ def plot_sorted_by_AB(data: pd.DataFrame, color_dict: dict) -> (plt.Figure, plt.
     fig, ax = plt.subplots(figsize=FIGSIZE)
     ax = plot_illustrative_survival_bars(data, 'new_t', 'new_surv', 
                                          color_dict['added_benefit'], 
-                                         linewidth=3, y_shift=-2, ax=ax)
+                                         linewidth=3, y_shift=2, ax=ax)
     ax = plot_illustrative_survival_bars(data, 'Time', 'new_surv',
                                          color_dict['control_arm'], 
-                                         linewidth=3, y_shift=-2, ax=ax)
+                                         linewidth=3, y_shift=2, ax=ax)
 
     return fig, ax
 

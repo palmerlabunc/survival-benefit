@@ -79,7 +79,7 @@ def compute_benefit_at_experimental_corr(data_dir: str, control_prefix: str, com
         print(f"Value error for {comb_prefix}: {verr}")
 
 
-def compute_benefit_at_corr_for_all_main_combo(config: dict, n_process: int = 4):
+def compute_benefit_at_corr_for_all(config: dict, n_process: int = 4):
     """Compute the benefit at a given correlation for all main combo in the input sheet.
     
     Args:
@@ -101,7 +101,7 @@ def compute_benefit_at_corr_for_all_main_combo(config: dict, n_process: int = 4)
         pool.starmap(compute_benefit_at_experimental_corr, args_arr)
 
 
-def compute_benefit_at_highest_corr_for_all_main_combo(config: dict, n_process: int = 4):
+def compute_benefit_at_highest_corr_for_all(config: dict, n_process: int = 4):
     """Compute the benefit at highest correlation (1) for all main combo in the input sheet.
     
     Args:
@@ -129,16 +129,17 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset', type=str, 
-                        help='Dataset to use (main_combo, biomarker, single_agent)')
+                        help='Dataset to use (main_combo, biomarker, single_agent, corr_uncertainty_high, corr_uncertainty_low)')
     args = parser.parse_args()
 
-    if args.dataset not in ['main_combo', 'biomarker', 'single_agent']:
+    if args.dataset not in ['main_combo', 'biomarker', 'single_agent', 
+                            'corr_uncertainty_high', 'corr_uncertainty_low']:
         raise ValueError('Invalid dataset name.')
     
     if args.dataset in ['main_combo', 'single_agent']:
-        compute_benefit_at_highest_corr_for_all_main_combo(config[args.dataset], n_process=8)
+        compute_benefit_at_highest_corr_for_all(config[args.dataset], n_process=8)
           
-    compute_benefit_at_corr_for_all_main_combo(config[args.dataset], n_process=8)
+    compute_benefit_at_corr_for_all(config[args.dataset], n_process=8)
 
 
 

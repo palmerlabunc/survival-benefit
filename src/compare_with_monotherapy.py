@@ -4,13 +4,13 @@ import seaborn as sns
 import glob
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import pearsonr, kstest, wilcoxon
+from scipy.stats import pearsonr, wilcoxon, shapiro, ttest_rel
 from sklearn.metrics import mean_squared_error
 from survival_benefit.survival_data_class import SurvivalData
 from survival_benefit.survival_benefit_class import SurvivalBenefit
 from survival_benefit.utils import interpolate
 import warnings
-from utils import load_config, set_figure_size_dim, get_xticks
+from utils import load_config, set_figure_size_dim, get_xticks, test_diff
 
 warnings.filterwarnings("ignore")
 
@@ -293,17 +293,20 @@ def plot_rmse_lineplot(data: pd.DataFrame) -> plt.Figure:
     Returns:
         plt.figure: figure containing line plot of RMSE values
     """
-    stat, p = wilcoxon(data['experimental_corr_rmse'], data['high_corr_rmse'])
+    testname, stat, p = test_diff(data['experimental_corr_rmse'], data['high_corr_rmse'])
     n_combo = data.shape[0]
-    n_patients = np.sum([data['N_combination'].sum(), data['N_experimental'].sum(), data['N_control'].sum()])
+    n_patients = np.sum([data['N_combination'].sum(), 
+                         data['N_experimental'].sum(), 
+                         data['N_control'].sum()])
     fig, ax = plt.subplots(figsize=(1.2, 1.5))
     for i in range(data.shape[0]):
         ax.plot([0, 1], 
                 [data.at[i, 'high_corr_rmse'], data.at[i, 'experimental_corr_rmse']], 
                 marker='o', color='k', markersize=3, linewidth=0.75)
     
-    ax.set_title(f'Wilcoxon p={p:.1e}\n{n_combo} combinatons, {n_patients} patients')
+    ax.set_title(f'{testname} p={p:.1e}\n{n_combo} combinatons, {n_patients} patients')
     ax.set_xlim(-0.5, 1.5)
+    ax.set_ylim(0)
     ax.set_xticks([0, 1])
     ax.set_xticklabels(['Apparent', 'Inferred'])
     ax.set_xlabel('Benefit')
@@ -311,22 +314,26 @@ def plot_rmse_lineplot(data: pd.DataFrame) -> plt.Figure:
     return fig
 
 
-def plot_monotherapy_added_benefit_gini_scatterplot(data: pd.DataFrame, color_dict: dict) -> plt.Figure:
+def plot_monotherapy_added_benefit_gini_scatterplot(data: pd.DataFrame, 
+                                                    color_dict: dict,
+                                                    corr: str = 'experimental') -> plt.Figure:
     """_summary_
 
     Args:
         data (pd.DataFrame): compare_df from compare_monotherapy_added_benefit
         color_dict (dict): color dictionary
+        corr (str, optional): _description_. Defaults to 'experimental'.
 
     Returns:
         plt.figure: figure containing scatter plot of Gini values
     """
-    r, p = pearsonr(data['monotherapy_gini'], data['experimental_corr_gini'])
+    testname, _, p = test_diff(data['monotherapy_gini'], data[f'{corr}_corr_gini'],
+                               method='wilcoxon')
     n = data.shape[0]
 
     fig, ax = plt.subplots(figsize=(1.5, 1.5))
     
-    sns.scatterplot(x='monotherapy_gini', y='experimental_corr_gini', 
+    sns.scatterplot(y='monotherapy_gini', x=f'{corr}_corr_gini', 
                     data=data,
                     color=color_dict['inference'],
                     size=3,
@@ -336,9 +343,12 @@ def plot_monotherapy_added_benefit_gini_scatterplot(data: pd.DataFrame, color_di
     ax.set_ylim(0, 1)
     ax.set_xticks([0, 0.5, 1])
     ax.set_yticks([0, 0.5, 1])
-    ax.set_title(f'Pearsonr={r:.2f}, p={p:.1e} (n={n})')
-    ax.set_xlabel('Monotherapy Gini coefficient')
-    ax.set_ylabel('Inference Gini coefficient')
+    ax.set_title(f'{testname} p={p:.1e} (n={n})')
+    ax.set_ylabel('Monotherapy Gini coefficient')
+    if corr == 'experimental':
+        ax.set_xlabel('Inferred benefit\nGini coefficient')
+    elif corr == 'high':
+        ax.set_xlabel('Apparent benefit\nGini coefficient')
     ax.get_legend().remove()
     return fig
 
@@ -371,8 +381,14 @@ def main():
     rmse_plot.savefig(f'{fig_dir}/compare_monotherapy_added_benefit_rmse.pdf',
                       bbox_inches='tight')
     
-    gini_scatterplot = plot_monotherapy_added_benefit_gini_scatterplot(compare_df, color_dict)
-    gini_scatterplot.savefig(f'{fig_dir}/compare_monotherapy_added_benefit_gini.pdf',
+    gini_scatterplot = plot_monotherapy_added_benefit_gini_scatterplot(compare_df, color_dict,
+                                                                       corr='experimental')
+    gini_scatterplot.savefig(f'{fig_dir}/compare_monotherapy_inferred_benefit_gini.pdf',
+                             bbox_inches='tight')
+    
+    gini_scatterplot = plot_monotherapy_added_benefit_gini_scatterplot(compare_df, color_dict, 
+                                                                       corr='high')
+    gini_scatterplot.savefig(f'{fig_dir}/compare_monotherapy_apparent_benefit_gini.pdf',
                              bbox_inches='tight')
 
 

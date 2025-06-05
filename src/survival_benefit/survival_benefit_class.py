@@ -12,8 +12,8 @@ from survival_benefit.prob_functions import get_prob
 from survival_benefit.utils import get_xticks
 from survival_benefit.survival_data_class import SurvivalData
 
-COLORS = {'mono': '#00cd6c', 
-          'comb': '#af58ba',
+COLORS = {'mono': '#005cab', 
+          'comb': '#e31b23',
           'added_benefit': "#ffaa00",
           'low_bound': "#f28522"}
 
@@ -27,9 +27,14 @@ class SurvivalBenefit:
                  comb_data: pd.DataFrame | SurvivalData = None,
                  mono_name: str = None, comb_name: str = None,
                  n_patients: int = 500,
-                 atrisk: pd.DataFrame = None, corr='spearmanr',
-                 outdir='.', out_name: str = None,
-                 figsize=(6, 4), fig_format='png', save_mode=True):
+                 atrisk: pd.DataFrame = None, 
+                 corr: str = 'spearmanr',
+                 outdir: str = '.', 
+                 out_name: str = None,
+                 figsize=(6, 4), 
+                 fig_format: str = 'png', 
+                 save_mode: bool =True,
+                 random_state: int = 0):
         """
         Constructs SurvivalBenefit object. Valid combinations of arguments are:
         1. mono_/comb_data as a SurvivalData object
@@ -54,6 +59,7 @@ class SurvivalBenefit:
             figsize (tuple, optional): figure width and height. Defaults to (6, 4).
             fig_format (str, optional): figure format (png, pdf, or jpeg). Defaults to 'png'.
             save_mode (bool, optional): save the output to files. Defaults to True.
+            random_state (int, optional): random seed. Defaults to 0.
         """
         plt.style.use('survival_benefit.styles.publication')
 
@@ -90,7 +96,7 @@ class SurvivalBenefit:
         self.__align_round()
         self.max_curve = self.__get_max_curve()
         self.norm_diff = self.__get_normalized_difference()
-        self.rng = np.random.default_rng(0)
+        self.rng = np.random.default_rng(random_state)
 
         # These will change with each run of compute_benefit
         self.info_str = ''
@@ -204,7 +210,7 @@ class SurvivalBenefit:
         n = len(values)
         gini = (2 * np.sum(np.multiply(np.arange(1, n+1), values)) /
                 (n * np.sum(values))) - (n + 1) / n
-        return np.round(gini, 2)
+        return np.round(gini, 3)
     
     def set_tmax(self, tmax: float):
         self.tmax = tmax

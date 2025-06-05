@@ -166,6 +166,65 @@ def create_main_combo_input_sheet(master_df: pd.DataFrame, config: dict) -> pd.D
     return result
 
 
+def create_corr_uncertainty_input_sheet(master_df: pd.DataFrame, 
+                                        config: dict,
+                                        boundary: str) -> pd.DataFrame:
+    """Create the input sheet for the correlation uncertainty analysis.
+
+    Args:
+        master_df (pd.DataFrame): data master sheet
+        config (dict): _description_
+        boundary (str): high or low boundary (1 standard deviation)
+
+    Returns:
+        pd.DataFrame: input sheet to be used for compute_benefit_all..
+    """
+    df = create_endpoint_subset_sheet(master_df, 'Surrogate')
+    # only use combos where correlation came from distribution of correlations
+    df = df.dropna(subset=['Spearmanr SD'])
+
+    raw_path = config['main_combo']['raw_dir']
+    processed_path = config['main_combo']['data_dir']
+
+    data = []
+    for idx, row in df.iterrows():
+        additional_info = None
+        if len(idx.split('_')) == 4:  # this is when there is additional information (e.g. RAS WT)
+            additional_info = idx.rsplit('_', 1)[-1]
+        cancer_type = row['Cancer Type']
+        experimental_drug = row['Experimental']
+        control_drug = row['Control']
+        first_author = row['First Author']
+        try:
+            year = int(row['Year'])
+        except ValueError:
+            print(idx)
+        n_combo = int(row['Combination Arm N'])
+        n_control = int(row['Control Arm N'])
+        
+        if boundary == 'high':
+            corr = row['Spearmanr'] + row['Spearmanr SD']
+        elif boundary == 'low':
+            corr = row['Spearmanr'] - row['Spearmanr SD']
+        else:
+            raise ValueError(f'Boundary {boundary} is not supported.')
+
+        
+        endpoint = row['Surrogate Metric'].strip()
+        data.append([raw_path, processed_path,
+                     get_control_prefix(cancer_type, control_drug, first_author, year, endpoint, additional_info=additional_info),
+                     get_combination_prefix(
+                         cancer_type, experimental_drug, control_drug, first_author, year, endpoint, additional_info=additional_info),
+                     get_label(cancer_type, experimental_drug, control_drug, first_author, year, endpoint, additional_info=additional_info),
+                     n_control, n_combo, corr])
+    
+    columns = ['Raw Path', 'Processed Path', 'Control',
+               'Combination', 'Label', 'N_Control', 'N_Combination', 'Corr']
+    result = pd.DataFrame(data=data, columns=columns)
+    return result
+
+
+
 def create_biomarker_input_sheet(biomarker_data_sheet: pd.DataFrame, config: dict) -> pd.DataFrame:
     """
     Args:
@@ -267,6 +326,18 @@ def main():
                                         header=0, index_col=None)
         input_df = create_monotherapy_input_sheet(monotherapy_sheet, config)
     
+    elif args.dataset == 'corr_uncertainty_low':
+        master_df = pd.read_excel(config['data_master_sheet'], 
+                                header=0, index_col=0, engine='openpyxl')
+        master_df = master_df.dropna(subset=['Indication'])
+        input_df = create_corr_uncertainty_input_sheet(master_df, config, 'low')
+    
+    elif args.dataset == 'corr_uncertainty_high':
+        master_df = pd.read_excel(config['data_master_sheet'], 
+                                header=0, index_col=0, engine='openpyxl')
+        master_df = master_df.dropna(subset=['Indication'])
+        input_df = create_corr_uncertainty_input_sheet(master_df, config, 'high')
+
     else:
         raise ValueError(f'Dataset {args.dataset} is not supported.')
     

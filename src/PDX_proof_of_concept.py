@@ -6,7 +6,7 @@ from scipy.stats import spearmanr, wilcoxon
 from lifelines import KaplanMeierFitter
 from typing import Tuple
 from PDXE_correlation import get_pdx_corr_data
-from utils import load_config, set_figure_size_dim, get_xticks
+from utils import load_config, set_figure_size_dim, get_xticks, test_diff
 from PDX_proof_of_concept_helper import *
 import warnings
 
@@ -298,6 +298,9 @@ def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt
     n_combos = coxph_df.shape[0]
     width, height = 1.5, 1.2
 
+    if n_combos == 1:
+        width, height = 1.5, 1.5
+    
     fig, axes = set_figure_size_dim(n_combos, 
                                     ax_width=width, ax_height=height, 
                                     max_cols=4)
@@ -384,8 +387,8 @@ def correlation_benefit_comparison(dat: pd.DataFrame) -> Tuple[pd.DataFrame, plt
 
 
 def plot_correlation_benefit_comparison_2lineplot(result_df: pd.DataFrame) -> plt.Figure:
-    stat, p = wilcoxon(result_df['RMSE_r_Highest'], 
-                       result_df['RMSE_r_BestAvgRes'])
+    testname, stat, p = test_diff(result_df['RMSE_r_Highest'], 
+                                  result_df['RMSE_r_BestAvgRes'])
     n_combo = result_df.shape[0]
     n_tumors = result_df['N'].sum()
     fig, ax = plt.subplots(figsize=(1.2, 1.5))
@@ -394,8 +397,9 @@ def plot_correlation_benefit_comparison_2lineplot(result_df: pd.DataFrame) -> pl
                 [result_df.at[i, 'RMSE_r_Highest'], result_df.at[i, 'RMSE_r_BestAvgRes']], 
                 marker='o', color='k', 
                 markersize=3, linewidth=0.75)
-    ax.set_title(f'Wilcoxon p={p:.1e}\n{n_combo} combinations, {n_tumors} tumors')
+    ax.set_title(f'{testname} p={p:.1e}\n{n_combo} combinations, {n_tumors} tumors')
     ax.set_xlim(-0.5, 1.5)
+    ax.set_ylim(0)
     ax.set_xticks([0, 1])
     ax.set_xticklabels(['Apparent', 'Inferred'])
     ax.set_xlabel('Benefit')
@@ -617,16 +621,16 @@ def test_antagonism_and_correlation(dat: pd.DataFrame, pdx_config: Mapping):
     # Testing for antagonism - bootstrapping test
     active_antag_mean_arr, comb_antag_mean, p_active= bootstrapping_test_for_antagonism(comb_active, 
                                                                                mono_active)
-    inactive_antag_mean_arr, comb_antag_mean, p_inactive = bootstrapping_test_for_antagonism(comb_active, 
-                                                                                  mono_inactive)
+    #inactive_antag_mean_arr, comb_antag_mean, p_inactive = bootstrapping_test_for_antagonism(comb_active, 
+    #                                                                              mono_inactive)
     fig8, ax = plt.subplots(figsize=(3, 2))
 
     ax = plot_boostrapping_distribution(active_antag_mean_arr, comb_antag_mean, p_active,
                                         label='Active monotherapy',
                                         ax=ax)
-    ax = plot_boostrapping_distribution(inactive_antag_mean_arr, comb_antag_mean, p_inactive,
-                                        label='Inactive monotherapy',
-                                        ax=ax)
+    #ax = plot_boostrapping_distribution(inactive_antag_mean_arr, comb_antag_mean, p_inactive,
+    #                                    label='Inactive monotherapy',
+    #                                    ax=ax)
     
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     fig8.savefig(f'{fig_dir}/PDXE_bootstrapping_test_for_antagonism.pdf', 

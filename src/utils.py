@@ -3,6 +3,7 @@ import pandas as pd
 from lifelines import CoxPHFitter
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import shapiro, wilcoxon, ttest_rel
 from typing import List, Tuple
 
 def load_config():
@@ -34,7 +35,7 @@ def get_cox_results(ipd_base: pd.DataFrame, ipd_test: pd.DataFrame) -> tuple:
 def set_figure_size_dim(n_axes: int = 1, 
                         ax_width: float = 1.5, 
                         ax_height: float = 1.5,
-                        max_cols: int = 4) -> (plt.Figure, np.ndarray[plt.Axes]):
+                        max_cols: int = 4) -> tuple[plt.Figure, np.ndarray[plt.Axes]]:
     """Generate a figure with size based on number of columns and desired axis size.
 
     Args:
@@ -159,3 +160,45 @@ def get_control_name_from_combo(combo: str) -> str:
     drugs = tokens[1].split('-')
 
     return '_'.join([tokens[0], drugs[1]] +  tokens[2:])
+
+
+def endpoint_simple(endpoint: str) -> str:
+    if endpoint == 'OS':
+        return 'OS'
+    return 'Surrogate'
+
+
+def test_diff(a: pd.Series,
+              b: pd.Series, method=None) -> tuple[str, float, float]:
+    """Test difference in Gini coefficients between monotherapy and inferred benefit.
+    Use Shapiro test to detirmine normality. If normal, use paired t-test. Otherwise, use Wilcoxon.
+    If method (ttest_rel or wilcoxon) is provided, use that method.
+
+    Args:
+        a (pd.Series): quantities of interest 1
+        b (pd.Series): quantities of interest 2
+        method (str, optional): Method to use (ttest_rel or wilcoxon). Defaults to None.
+
+    Returns:
+        str: test name
+        float: statistics
+        float: p-value
+    """
+    _, shapiro_p = shapiro(a - b)
+    print("Shapiro-Wilk test for normality: p = ", shapiro_p)
+    if method is None:
+        if shapiro_p < 0.05:
+            stat, p = wilcoxon(a, b)
+            return "Wilcoxon", stat, p
+        else:
+            stat, p = ttest_rel(a, b)
+            return "paired t-test", stat, p
+    
+    if method == 'ttest_rel':
+        stat, p = ttest_rel(a, b)
+        return "paired t-test", stat, p
+    elif method == 'wilcoxon':
+        stat, p = wilcoxon(a, b)
+        return "Wilcoxon", stat, p
+    else:
+        raise ValueError("Invalid method. Choose either ttest_rel or wilcoxon.")

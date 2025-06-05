@@ -19,7 +19,7 @@ placebo:
   metadata_sheet:
   raw_dir: data/raw/clinical_trials
   data_dir: data/clinical_trials/placebo
-  fig_dir: figures/placebo
+  fig_dir: figures/phttp://localhost:8888/lablacebo
   table_dir: tables/placebo
 
 single_agent:
@@ -59,7 +59,22 @@ example:
   real_example_control: Breast_Capecitabine_Kaufman2008_PFS
   real_example_experimental: Breast_Lapatinib_Kaufman2009_PFS
 
+corr_uncertainty_high:
+  metadata_sheet: "data/clinical_trials/corr_uncertainty_high_input_data_sheet.csv"
+  raw_dir: data/raw/clinical_trials
+  data_dir: data/clinical_trials/main_combo
+  fig_dir: figures/corr_uncertainty
+  table_dir: tables/corr_uncertainty_high
+
+corr_uncertainty_low:
+  metadata_sheet: "data/clinical_trials/corr_uncertainty_low_input_data_sheet.csv"
+  raw_dir: data/raw/clinical_trials
+  data_dir: data/clinical_trials/main_combo
+  fig_dir: figures/corr_uncertainty
+  table_dir: tables/corr_uncertainty_low
+
 ### For analyses
+
 # Seaborn deep
 # deep blue: #4c72b0
 # deep red: #c44e52
@@ -72,7 +87,7 @@ example:
 
 
 colors:
-  inference: "#af58ba" # purple
+  inference: "#981f7d" # purple
   visual_appearance: "#00cd6c" # green
   combination_arm: "#e31b23" # red
   #added_benefit: "#ffaa00" # orange

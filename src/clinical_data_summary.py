@@ -93,6 +93,29 @@ def plot_correlation_distribution(data: pd.DataFrame) -> plt.Figure:
     return fig
 
 
+def write_clinical_data_summary(data_master_df: pd.DataFrame, config: dict):
+
+    f = open(config['main_combo']['table_dir'] + '/clinical_data_summary.txt', 'w')
+
+    # how many Surrogate endpoints?
+    f.write(data_master_df.value_counts('Include Surrogate (0/1/NA)', dropna=False).to_string())
+    f.write('\n\n')
+    # how many PFS or EFS?
+    f.write(data_master_df.value_counts('Surrogate Metric', dropna=False).to_string())
+    f.write('\n\n')
+    # how many OS?
+    f.write(data_master_df.value_counts('Include OS (0/1/NA)', dropna=False).to_string())
+    f.write('\n\n')
+    # how many unique trials?
+    df = data_master_df.drop_duplicates(subset=['Cancer Type', 'Experimental', 'Control',
+                                            'Trial ID', 'Trial Name'])
+    f.write(f'Total number of unique trials: {len(df)}\n')
+    f.write('\n')
+    # how many unique cancer types?
+    f.write(df.value_counts('Cancer Type', dropna=False).to_string())
+    f.close()
+
+
 def main():
     plt.style.use('env/publication.mplstyle')
     config = load_config()
@@ -132,6 +155,8 @@ def main():
     fig3.savefig(f'{config["main_combo"]["fig_dir"]}/correlation_distribution_histplot.pdf',
                  bbox_inches='tight')
 
+    # report summary
+    write_clinical_data_summary(data_master_df, config)
 
 if __name__ == '__main__':
     main()

@@ -67,7 +67,6 @@ def compile_stats(table_dir: str, corr_type: str) -> pd.DataFrame:
         stat_df = pd.concat([stat_df, stats], axis=1, join='outer')
     
     stat_df = stat_df.T
-    #FIXME I don't know why this line isn't working
     stat_df = stat_df.apply(pd.to_numeric, errors='ignore', axis=1)
     
     stat_df.loc[:, 'Gini_coefficient'] = stat_df['Gini_coefficient'].astype(float)
@@ -153,11 +152,29 @@ def plot_1mo_responder_percentage(stats: pd.DataFrame, highlight=False) -> plt.F
     return fig
 
 
+def combos_with_median_reached_for_both_arms(metadata: pd.DataFrame) -> pd.DataFrame:
+    data_master_df = metadata.dropna(subset=['Key', 'Indication'])
+    data_master_df.drop_duplicates(
+        subset=['Cancer Type', 'Experimental', 'Control', 'Trial ID', 'Trial Name'],
+        inplace=True)
+    actual_median_benefit_df = pd.concat([pd.Series(index=data_master_df['Key'].apply(lambda x: add_endpoint_to_key(x, 'OS')).values,
+                                                    data=data_master_df['OS median benefit'].values),
+                                          pd.Series(index=data_master_df.apply(lambda x: add_endpoint_to_key(x['Key'], x['Surrogate Metric']), axis=1).values,
+                                                    data=data_master_df['Surrogate median benefit'].values).dropna()],
+                                         axis=0)
+    # remove rows with 'Not reached for comb' and 'Not reached'
+    actual_median_benefit_df = actual_median_benefit_df[~actual_median_benefit_df.isin(['Not reached for comb', 'Not reached'])].astype(float)
+    return actual_median_benefit_df.index
+
+
 def plot_1mo_responder_percentage_inferred_apparent(high_corr_stats: pd.DataFrame, 
                                                     exp_corr_stats: pd.DataFrame) -> plt.Figure:
+    high_stat_df = high_corr_stats.set_index('Combination')
+    exp_stat_df = exp_corr_stats.set_index('Combination')
+    
     col = 'Percent_patients_benefitting_1mo_from_valid_highbound'
-    exp_stat_df = exp_corr_stats.sort_values(col)
-    high_stat_df = high_corr_stats.reindex(exp_stat_df.index)
+    exp_stat_df = exp_stat_df.sort_values(col)
+    high_stat_df = high_stat_df.reindex(exp_stat_df.index)
     fig, ax = plt.subplots(figsize=(3, 1.5))
 
     high_stat_df.reset_index().plot.bar(y=col, ax=ax, 
@@ -169,8 +186,45 @@ def plot_1mo_responder_percentage_inferred_apparent(high_corr_stats: pd.DataFram
     ax.set_xticks([])
     ax.set_ylabel('Patients benefitting\nat least 1 month (%)')
     ax.set_yticks([0, 50, 100])
-    ax.set_xlabel(f'{exp_stat_df.shape[0]} Combination therapies')
+    ax.set_xlabel(f'{exp_stat_df.shape[0]} Combination therapies\n(Sorted by % patients with benefit)')
     ax.set_ylim(0, 100)
+    ax.get_legend().remove()
+    return fig
+
+
+def plot_median_benefit_inferred_apparent_barplot(metadata: pd.DataFrame,
+                                                  high_corr_stats: pd.DataFrame, 
+                                                  exp_corr_stats: pd.DataFrame) -> plt.Figure:
+    combos_median_reached = combos_with_median_reached_for_both_arms(metadata)
+    high_stat_df = high_corr_stats.set_index('Combination')
+    exp_stat_df = exp_corr_stats.set_index('Combination')
+
+    condition = high_stat_df.index.isin(combos_median_reached)
+    high_stat_df = high_stat_df[condition]
+    exp_stat_df = exp_stat_df[condition]
+
+    col = 'Median_benefit_highbound'
+    exp_stat_df = exp_stat_df.sort_values(col)
+    high_stat_df = high_stat_df.reindex(exp_stat_df.index)
+
+
+    fig, ax = plt.subplots(figsize=(3, 5))
+
+    exp_stat_df.reset_index().plot.bar(y=col, ax=ax, 
+                                       color=COLOR_DICT['inference'])
+    high_stat_df.reset_index().plot.bar(y=col, ax=ax, 
+                                        color=COLOR_DICT['visual_appearance'])
+
+
+    ax.set_xticklabels('')
+    ax.set_xticks([])
+    ax.set_ylabel('Median months gained\namong patients with benefit')
+    
+    ax.set_xlabel(f'{exp_stat_df.shape[0]} Combination therapies\n(Sorted by median PFS benefit)')
+    ymax = exp_stat_df[col].max()
+    #ax.set_ylim(0, 24)
+    ax.set_ylim(0, ymax + 2)
+    ax.set_yticks(range(0, int(ymax + 2), 6))
     ax.get_legend().remove()
     return fig
 
@@ -197,6 +251,9 @@ def plot_OS_surrogate_gini(data: pd.DataFrame) -> plt.Figure:
     ax.set_xlabel('OS Gini coefficient')
     ax.set_ylabel('Surrogate Gini coefficient')
     return fig
+
+
+
 
 
 def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame, 
@@ -249,7 +306,8 @@ def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame,
     if not highlight:
         sns.scatterplot(y='Median_benefit_highbound', 
                         x='actual',
-                        size=3,
+                        size=0.7,
+                        alpha=0.7,
                         data=merged, 
                         ax=ax, color=COLOR_DICT['inference'])
     else:
@@ -257,7 +315,8 @@ def plot_median_benefit_simulated_vs_actual(metadata: pd.DataFrame,
                         x='actual',
                         hue='3mo_more_benefit',
                         hue_order=[False, True],
-                        size=3,
+                        size=0.7,
+                        alpha=0.7,
                         data=merged, 
                         ax=ax, 
                         palette=[sns.color_palette('deep')[0], 'orange'])
@@ -346,7 +405,7 @@ def plot_gini_by_something_boxplot(compiled_stats: pd.DataFrame, by: str, n_min=
         plt.figure:
     """
     sns.set_palette('deep')
-    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    fig, ax = plt.subplots(figsize=(2, 1.5))
     dat = compiled_stats[compiled_stats.groupby(by)[by].transform('size') >= n_min]
     
     order = dat.groupby(by)['Gini_coefficient'].median().sort_values().index
@@ -459,8 +518,10 @@ def main():
     for endpoint in ['OS', 'Surrogate']:
         exp_corr_stats_endpoint = exp_corr_stats[exp_corr_stats['endpoint'] == endpoint]
         high_corr_stats_endpoint = high_corr_stats[high_corr_stats['endpoint'] == endpoint]
+
         extended_exp_corr_stats_endpoint = extended_exp_corr_stats[extended_exp_corr_stats['endpoint'] == endpoint]
         
+        # Gini box plots
         fig1 = plot_gini_by_something_boxplot(extended_exp_corr_stats_endpoint, 'Cancer Type',
                                               n_min=3)
         fig1.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_cancer_type_boxplot.pdf",
@@ -470,6 +531,7 @@ def main():
         fig2.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_by_experimental_class_boxplot.pdf",
                     bbox_inches='tight')
         
+        # Gini histogram
         fig4 = plot_gini_histplot(exp_corr_stats)
         fig4.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_histplot.pdf",
                     bbox_inches='tight')
@@ -479,6 +541,7 @@ def main():
         fig5.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_compare_exp_and_high_kdeplot.pdf",
                     bbox_inches='tight')
         
+        # 1 month responder barplots
         fig6 = plot_1mo_responder_percentage(exp_corr_stats_endpoint, highlight=False)
         fig6.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.1mo_responder_percentage_barplot.pdf",
                     bbox_inches='tight')
@@ -495,7 +558,7 @@ def main():
                     bbox_inches='tight')
         
 
-        
+        # median benefit scatter plot
         fig8dat, fig8 = plot_median_benefit_simulated_vs_actual(metadata, exp_corr_stats_endpoint, config,
                                                                 endpoint=endpoint)
         fig8.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot.pdf",
@@ -508,10 +571,19 @@ def main():
                       bbox_inches='tight')
         fig8dat.to_csv(f"{config['main_combo']['table_dir']}/{endpoint}.median_benefit_simulated_vs_actual_scatterplot_hightlight.source_data.csv",
                        index=False)
-    
-        fig9 = plot_gini_vs_HR(extended_exp_corr_stats_endpoint, endpoint)
-        fig9.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_vs_HR_scatterplot.pdf",
+        
+        # median benefit barplot
+        fig9 = plot_median_benefit_inferred_apparent_barplot(metadata,
+                                                             high_corr_stats_endpoint,
+                                                             exp_corr_stats_endpoint)
+        fig9.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.median_benefit_both_barplot.pdf",
                     bbox_inches='tight')
+        
+        # Gini vs. hazard ratio
+        fig10 = plot_gini_vs_HR(extended_exp_corr_stats_endpoint, endpoint)
+        fig10.savefig(f"{config['main_combo']['fig_dir']}/{endpoint}.gini_vs_HR_scatterplot.pdf",
+                    bbox_inches='tight')
+
 
     # 8: Breast_Ixabepilone-Capecitabine_Thomas2007_PFS
     # 16: Breast_Ribociclib-Letrozole_Hortobagyi2018_PFS
